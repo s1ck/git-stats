@@ -1,9 +1,8 @@
-use std::collections::HashMap;
-
 use color_eyre::Section;
 use eyre::Report;
 use fehler::throws;
 use git2::{Repository, Revwalk};
+use std::collections::BTreeMap;
 
 #[throws(Report)]
 fn open_repo() -> Repository {
@@ -21,7 +20,7 @@ fn main() {
     let mut revwalk: Revwalk = repository.revwalk()?;
     revwalk.push_head()?;
 
-    let mut pair_counts = HashMap::new();
+    let mut pair_counts = BTreeMap::new();
 
     revwalk
         .filter_map(|oid| {
@@ -36,7 +35,7 @@ fn main() {
             let inner_map = match pair_counts.get_mut(author_name) {
                 Some(inner_map) => inner_map,
                 None => {
-                    pair_counts.insert(String::from(author_name), HashMap::new());
+                    pair_counts.insert(String::from(author_name), BTreeMap::new());
                     pair_counts.get_mut(author_name).unwrap()
                 }
             };
@@ -57,7 +56,12 @@ fn main() {
 }
 
 fn get_navigators(commit_message: &str) -> Vec<&str> {
-    vec![commit_message]
+    commit_message.lines()
+        .filter(|line| line.to_lowercase().starts_with("co-authored-by:"))
+        .filter_map(|line| line.splitn(2, ":").nth(1))
+        .filter_map(|line| line.split("<").next())
+        .map(|split| split.trim())
+        .collect()
 }
 
 static APPLICATION: &'static str = env!("CARGO_PKG_NAME");
