@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+
 use color_eyre::Section;
 use eyre::Report;
 use fehler::throws;
-use git2::{Repository, Revwalk, Commit};
+use git2::{Repository, Revwalk};
 
 #[throws(Report)]
 fn open_repo() -> Repository {
@@ -19,27 +21,42 @@ fn main() {
     let mut revwalk: Revwalk = repository.revwalk()?;
     revwalk.push_head()?;
 
-    let pairs = revwalk
+    let mut pair_counts = HashMap::new();
+
+    revwalk
         .filter_map(|oid| {
             let oid = oid.ok()?;
             repository.find_commit(oid).ok()
         })
-        .flat_map(|commit| {
+        .for_each(|commit| {
             let author = commit.author();
             let author_name = author.name().unwrap_or_default();
             let commit_message = commit.message().unwrap_or_default();
 
-            let driver = String::from(author_name);
-            let navigators = get_navigator(commit_message);
+            let inner_map = match pair_counts.get_mut(author_name) {
+                Some(inner_map) => inner_map,
+                None => {
+                    pair_counts.insert(String::from(author_name), HashMap::new());
+                    pair_counts.get_mut(author_name).unwrap()
+                }
+            };
 
-            navigators.into_iter().map(move |navigator| (driver.clone(), String::from(navigator))).collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
+            for navigator in get_navigators(commit_message) {
+               let pair_counts =  match inner_map.get_mut(navigator) {
+                    Some(inner_map) => inner_map,
+                    None => {
+                        inner_map.insert(String::from(navigator), 0_u32);
+                        inner_map.get_mut(navigator).unwrap()
+                    }
+                };
+                *pair_counts += 1;
+            }
+        });
 
-    println!("{:#?}", pairs);
+    println!("{:#?}", pair_counts);
 }
 
-fn get_navigator(commit_message: &str) -> Vec<&str> {
+fn get_navigators(commit_message: &str) -> Vec<&str> {
     vec![commit_message]
 }
 
