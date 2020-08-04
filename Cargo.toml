@@ -1,0 +1,37 @@
+[package]
+name = "git-stats"
+version = "0.1.0"
+authors = [
+    "Martin Junghanns <martin.junghanns@neotechnology.com>",
+    "Paul Horn <paul.horn@neotechnology.com>"
+]
+description = "Gather and output some statistics about your repo"
+edition = "2018"
+license = "MIT OR Apache-2.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chrono = "0.4.13"
+clap = "3.0.0-beta.1"
+color-eyre = "0.5.0"
+derive_more = "0.99.9"
+eyre = "0.6.0"
+fehler = "1.0.0"
+git2 = "0.13.8"
+hdrhistogram = { version = "7.1.0", default-features = false }
+indexmap = "1.5.0"
+thiserror = "1.0.20"
+tui = "0.10.0"
+
+[profile.release]
+codegen-units = 1
+debug = false
+debug-assertions = false
+lto = true
+opt-level = 2
+overflow-checks = true
+panic = 'abort'
+rpath = false
+
+
