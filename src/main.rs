@@ -1,12 +1,23 @@
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+
+use clap::{Clap, AppSettings};
 use color_eyre::Section;
 use eyre::Report;
 use fehler::throws;
 use git2::{Repository, Revwalk};
-use std::collections::BTreeMap;
+
+#[derive(Clap, Debug)]
+#[clap(version, author, about, global_setting = AppSettings::ColoredHelp)]
+struct Opts {
+    /// Path to Git repository
+    #[clap(short, long)]
+    repository: Option<PathBuf>,
+}
 
 #[throws(Report)]
-fn open_repo() -> Repository {
-    Repository::open_from_env()
+fn open_repo(path: Option<PathBuf>) -> Repository {
+    path.map_or_else(Repository::open_from_env, Repository::discover)
         .map_err(|_| Error::NotInGitRepository)
         .suggestion(Suggestions::NotInGitRepository)?
 }
@@ -14,8 +25,16 @@ fn open_repo() -> Repository {
 #[throws(Report)]
 fn main() {
     color_eyre::install()?;
+    let mut opts: Opts = Opts::parse();
 
-    let repository: Repository = open_repo()?;
+    // Returns Owned repository and replaces the field in Opts with the Options' default (None)
+    // Same as:
+    // let repository = std::mem::take(&mut opts.repository);
+    // Same as:
+    // let repository = std::mem::replace(&mut opts.repository, None);
+    let repository = opts.repository.take();
+
+    let repository = open_repo(repository)?;
 
     let mut revwalk: Revwalk = repository.revwalk()?;
     revwalk.push_head()?;

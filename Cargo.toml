@@ -5,7 +5,7 @@ authors = [
     "Martin Junghanns <martin.junghanns@neotechnology.com>",
     "Paul Horn <paul.horn@neotechnology.com>"
 ]
-description = "Gather and output some statistics about your repo"
+description = "Print some statistics about your repo"
 edition = "2018"
 license = "MIT OR Apache-2.0"
 
