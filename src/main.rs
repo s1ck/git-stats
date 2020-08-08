@@ -64,7 +64,21 @@ fn main() {
                 }
             };
 
-            for navigator in get_navigators(commit_message) {
+            let navigators = get_navigators(commit_message);
+
+            if navigators.is_empty() {
+                let single_driver = "single_driver";
+                let single_counts = match inner_map.get_mut(single_driver)  {
+                    Some(inner_map) => inner_map,
+                    None => {
+                        inner_map.insert(String::from(single_driver), 0_u32);
+                        inner_map.get_mut(single_driver).unwrap()
+                    }
+                };
+                *single_counts += 1;
+            }
+
+            for navigator in navigators {
                let pair_counts =  match inner_map.get_mut(navigator) {
                     Some(inner_map) => inner_map,
                     None => {
