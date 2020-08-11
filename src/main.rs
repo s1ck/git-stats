@@ -1,7 +1,7 @@
 #![allow(deprecated)]
 
-#[macro_use]
-extern crate nom;
+#[macro_use] extern crate maplit;
+#[macro_use]extern crate nom;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -10,7 +10,7 @@ use clap::{AppSettings, Clap};
 use color_eyre::Section;
 use eyre::Report;
 use fehler::throws;
-use git2::{Repository, Revwalk, Commit};
+use git2::{Repository, Revwalk};
 
 #[derive(Clap, Debug)]
 #[clap(version, author, about, global_setting = AppSettings::ColoredHelp)]
@@ -25,18 +25,6 @@ fn open_repo(path: Option<PathBuf>) -> Repository {
     path.map_or_else(Repository::open_from_env, Repository::discover)
         .map_err(|_| Error::NotInGitRepository)
         .suggestion(Suggestions::NotInGitRepository)?
-}
-
-macro_rules! put_if_absent {
-    ( $key: expr, $map: ident, $value: ty ) => {
-        match $map.get_mut($key) {
-            Some(inner_map) => inner_map,
-            None => {
-                $map.insert(String::from($key), <$value>::default());
-                $map.get_mut($key).unwrap()
-            }
-        }
-    }
 }
 
 #[throws(Report)]
@@ -70,18 +58,19 @@ fn main() {
             let author = commit.author();
             let author_name = author.name().unwrap_or_default();
             let commit_message = commit.message().unwrap_or_default();
-
-            let inner_map = put_if_absent!(author_name, pair_counts, BTreeMap<String, u32>);
-
+            let author_name = replace_umlauts(author_name);
             let navigators = get_navigators(commit_message);
 
+            let inner_map = pair_counts.entry(author_name).or_insert_with(BTreeMap::new);
+
             if navigators.is_empty() {
-                let single_counts = put_if_absent!("single_driver", inner_map, u32);
+                let single_counts = inner_map.entry(String::from("single_driver")).or_insert(0_u32);
                 *single_counts += 1;
             }
 
             for navigator in navigators {
-                let pair_counts = put_if_absent!(navigator, inner_map, u32);
+                let navigator = replace_umlauts(navigator);
+                let pair_counts: &mut u32 = inner_map.entry(navigator).or_insert(0_u32);
                 *pair_counts += 1;
             }
         });
@@ -99,6 +88,27 @@ fn get_navigators(commit_message: &str) -> Vec<&str> {
         .filter_map(|line| coauthor::get_co_author(line))
         .map(|coauthor| coauthor.name)
         .collect()
+}
+
+fn replace_umlauts(input: &str) -> String {
+    let replacements = hashmap! {
+        'Ä' => "Ae",
+        'ä' => "ae",
+        'Ö' => "Oe",
+        'ö' => "oe",
+        'Ü' => "Ue",
+        'ü' => "ue",
+        'ß' => "ss",
+    };
+    let mut new_string = String::new();
+
+    for c in input.chars() {
+        match replacements.get(&c) {
+            Some(replacement) => new_string.push_str(replacement),
+            None => new_string.push(c)
+        }
+    }
+    new_string
 }
 
 mod coauthor {
