@@ -27,6 +27,18 @@ fn open_repo(path: Option<PathBuf>) -> Repository {
         .suggestion(Suggestions::NotInGitRepository)?
 }
 
+macro_rules! put_if_absent {
+    ( $key: expr, $map: ident, $value: ty ) => {
+        match $map.get_mut($key) {
+            Some(inner_map) => inner_map,
+            None => {
+                $map.insert(String::from($key), <$value>::default());
+                $map.get_mut($key).unwrap()
+            }
+        }
+    }
+}
+
 #[throws(Report)]
 fn main() {
     color_eyre::install()?;
@@ -59,36 +71,17 @@ fn main() {
             let author_name = author.name().unwrap_or_default();
             let commit_message = commit.message().unwrap_or_default();
 
-            let inner_map = match pair_counts.get_mut(author_name) {
-                Some(inner_map) => inner_map,
-                None => {
-                    pair_counts.insert(String::from(author_name), BTreeMap::new());
-                    pair_counts.get_mut(author_name).unwrap()
-                }
-            };
+            let inner_map = put_if_absent!(author_name, pair_counts, BTreeMap<String, u32>);
 
             let navigators = get_navigators(commit_message);
 
             if navigators.is_empty() {
-                let single_driver = "single_driver";
-                let single_counts = match inner_map.get_mut(single_driver)  {
-                    Some(inner_map) => inner_map,
-                    None => {
-                        inner_map.insert(String::from(single_driver), 0_u32);
-                        inner_map.get_mut(single_driver).unwrap()
-                    }
-                };
+                let single_counts = put_if_absent!("single_driver", inner_map, u32);
                 *single_counts += 1;
             }
 
             for navigator in navigators {
-               let pair_counts =  match inner_map.get_mut(navigator) {
-                    Some(inner_map) => inner_map,
-                    None => {
-                        inner_map.insert(String::from(navigator), 0_u32);
-                        inner_map.get_mut(navigator).unwrap()
-                    }
-                };
+                let pair_counts = put_if_absent!(navigator, inner_map, u32);
                 *pair_counts += 1;
             }
         });
