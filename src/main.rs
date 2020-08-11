@@ -4,15 +4,15 @@
 #[macro_use]extern crate nom;
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{AppSettings, Clap};
 use color_eyre::Section;
 use eyre::Report;
 use fehler::throws;
-use git2::{Repository, Revwalk};
-use once_cell::sync::Lazy;
+use git2::{DiffFormat, Repository, Revwalk};
 use nom::lib::std::collections::HashMap;
+use once_cell::sync::Lazy;
 
 #[derive(Clap, Debug)]
 #[clap(version, author, about, global_setting = AppSettings::ColoredHelp)]
@@ -20,13 +20,16 @@ struct Opts {
     /// Path to Git repository
     #[clap(short, long)]
     repository: Option<PathBuf>,
+    /// Depth of hot path investigation
+    #[clap(short, long, default_value = "4")]
+    depth: usize,
 }
 
-#[throws(Report)]
-fn open_repo(path: Option<PathBuf>) -> Repository {
+// #[throws(Report)]
+fn open_repo(path: Option<PathBuf>) -> eyre::Result<Repository> {
     path.map_or_else(Repository::open_from_env, Repository::discover)
         .map_err(|_| Error::NotInGitRepository)
-        .suggestion(Suggestions::NotInGitRepository)?
+        .suggestion(Suggestions::NotInGitRepository)
 }
 
 #[throws(Report)]
@@ -40,6 +43,7 @@ fn main() {
     // Same as:
     // let repository = std::mem::replace(&mut opts.repository, None);
     let repository = opts.repository.take();
+    let hot_path_depth = opts.depth;
 
     let repository = open_repo(repository)?;
 
@@ -47,6 +51,7 @@ fn main() {
     revwalk.push_head()?;
 
     let mut pair_counts = BTreeMap::new();
+    let mut hot_paths = BTreeMap::new();
 
     revwalk
         .filter_map(|oid| {
@@ -56,7 +61,8 @@ fn main() {
         // TODO: should be an argument option
         // Filter merge commits
         .filter(|commit| commit.parent_count() == 1)
-        .for_each(|commit| {
+        // Extract co-author
+        .inspect(|commit| {
             let author = commit.author();
             let author_name = author.name().unwrap_or_default();
             let commit_message = commit.message().unwrap_or_default();
@@ -72,17 +78,48 @@ fn main() {
 
             for navigator in navigators {
                 let navigator = replace_umlauts(navigator);
-                let pair_counts: &mut u32 = inner_map.entry(navigator).or_insert(0_u32);
+                let pair_counts = inner_map.entry(navigator).or_insert(0_u32);
                 *pair_counts += 1;
             }
-        });
+        })
+        .inspect(|commit| {
+            let parent = commit.parent(0).unwrap();
+            let parent_tree = parent.tree().unwrap();
+            let current = commit.tree().unwrap();
+            let diff = repository.diff_tree_to_tree(Some(&parent_tree), Some(&current), None).unwrap();
+            // let diff = repository.diff_tree_to_workdir(Some(&current), None).unwrap();
+            let author = commit.author();
+            let author_name = replace_umlauts(author.name().unwrap_or_default());
 
-    println!("{:#?}", pair_counts);
+            let inner_map = hot_paths.entry(author_name).or_insert_with(BTreeMap::new);
 
-    for (author, co_authors) in pair_counts {
-        let total_commits = co_authors.values().sum::<u32>();
-        println!("{}: {} commits", author, total_commits);
+            for delta in diff.deltas() {
+                let directory = delta.new_file().path().unwrap();
+                for ancestor in directory.ancestors().skip(1) {
+                    let path_count = inner_map.entry(ancestor.to_path_buf()).or_insert(0_u32);
+                    *path_count += 1;
+                }
+            }
+        })
+        .for_each(drop);
+
+
+    for (author, hot_paths) in hot_paths {
+        println!("{}", author);
+        let mut hot_paths = hot_paths.into_iter()
+            .filter(|(path, _)| path.iter().count() <= hot_path_depth)
+            .collect::<Vec<_>>();
+        hot_paths.sort_by_key(|(_, count)| u32::max_value() - count);
+        hot_paths.into_iter().for_each(|(path, count)| println!("{} => {:?}", count, path))
     }
+
+    // println!("{:#?}", pair_counts);
+    // println!("{:#?}", hot_paths);
+    //
+    // for (author, co_authors) in pair_counts {
+    //     let total_commits = co_authors.values().sum::<u32>();
+    //     println!("{}: {} commits", author, total_commits);
+    // }
 }
 
 fn get_navigators(commit_message: &str) -> Vec<&str> {
