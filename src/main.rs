@@ -5,12 +5,15 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use clap::{AppSettings, Clap};
 use color_eyre::Section;
 use eyre::Report;
 use fehler::throws;
 use git2::{Repository, Revwalk};
+use once_cell::sync::Lazy;
+use nom::lib::std::collections::HashMap;
 
 #[derive(Clap, Debug)]
 #[clap(version, author, about, global_setting = AppSettings::ColoredHelp)]
@@ -90,8 +93,8 @@ fn get_navigators(commit_message: &str) -> Vec<&str> {
         .collect()
 }
 
-fn replace_umlauts(input: &str) -> String {
-    let replacements = hashmap! {
+static REPLACEMENTS: Lazy<Mutex<HashMap<char, &str>>> = Lazy::new(|| {
+    Mutex::new(hashmap! {
         'Ä' => "Ae",
         'ä' => "ae",
         'Ö' => "Oe",
@@ -99,7 +102,12 @@ fn replace_umlauts(input: &str) -> String {
         'Ü' => "Ue",
         'ü' => "ue",
         'ß' => "ss",
-    };
+    })
+});
+
+fn replace_umlauts(input: &str) -> String {
+    let replacements = REPLACEMENTS.lock().unwrap();
+
     let mut new_string = String::new();
 
     for c in input.chars() {

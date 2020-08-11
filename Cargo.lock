@@ -225,6 +225,7 @@ dependencies = [
  "indexmap",
  "maplit",
  "nom",
+ "once_cell",
  "test-case",
  "thiserror",
  "tui",
