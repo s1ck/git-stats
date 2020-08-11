@@ -10,7 +10,7 @@ use clap::{AppSettings, Clap};
 use color_eyre::Section;
 use eyre::Report;
 use fehler::throws;
-use git2::{Repository, Revwalk};
+use git2::{Repository, Revwalk, Commit};
 
 #[derive(Clap, Debug)]
 #[clap(version, author, about, global_setting = AppSettings::ColoredHelp)]
@@ -51,6 +51,9 @@ fn main() {
             let oid = oid.ok()?;
             repository.find_commit(oid).ok()
         })
+        // TODO: should be an argument option
+        // Filter merge commits
+        .filter(|commit| commit.parent_count() == 1)
         .for_each(|commit| {
             let author = commit.author();
             let author_name = author.name().unwrap_or_default();
@@ -91,6 +94,11 @@ fn main() {
         });
 
     println!("{:#?}", pair_counts);
+
+    for (author, co_authors) in pair_counts {
+        let total_commits = co_authors.values().sum::<u32>();
+        println!("{}: {} commits", author, total_commits);
+    }
 }
 
 fn get_navigators(commit_message: &str) -> Vec<&str> {
