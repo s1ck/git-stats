@@ -226,6 +226,7 @@ dependencies = [
  "maplit",
  "nom",
  "once_cell",
+ "termion",
  "test-case",
  "thiserror",
  "tui",

@@ -1,18 +1,22 @@
 #![allow(deprecated)]
 
-#[macro_use] extern crate maplit;
-#[macro_use]extern crate nom;
+#[macro_use]
+extern crate maplit;
+#[macro_use]
+extern crate nom;
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::{AppSettings, Clap};
 use color_eyre::Section;
 use eyre::Report;
 use fehler::throws;
-use git2::{DiffFormat, Repository, Revwalk};
+use git2::{Repository, Revwalk};
 use nom::lib::std::collections::HashMap;
 use once_cell::sync::Lazy;
+
+mod ui;
 
 #[derive(Clap, Debug)]
 #[clap(version, author, about, global_setting = AppSettings::ColoredHelp)]
@@ -43,7 +47,7 @@ fn main() {
     // Same as:
     // let repository = std::mem::replace(&mut opts.repository, None);
     let repository = opts.repository.take();
-    let hot_path_depth = opts.depth;
+    // let hot_path_depth = opts.depth;
 
     let repository = open_repo(repository)?;
 
@@ -51,7 +55,7 @@ fn main() {
     revwalk.push_head()?;
 
     let mut pair_counts = BTreeMap::new();
-    let mut hot_paths = BTreeMap::new();
+    // let mut hot_paths = BTreeMap::new();
 
     revwalk
         .filter_map(|oid| {
@@ -72,7 +76,7 @@ fn main() {
             let inner_map = pair_counts.entry(author_name).or_insert_with(BTreeMap::new);
 
             if navigators.is_empty() {
-                let single_counts = inner_map.entry(String::from("single_driver")).or_insert(0_u32);
+                let single_counts = inner_map.entry(String::from("han_solo")).or_insert(0_u32);
                 *single_counts += 1;
             }
 
@@ -82,36 +86,37 @@ fn main() {
                 *pair_counts += 1;
             }
         })
-        .inspect(|commit| {
-            let parent = commit.parent(0).unwrap();
-            let parent_tree = parent.tree().unwrap();
-            let current = commit.tree().unwrap();
-            let diff = repository.diff_tree_to_tree(Some(&parent_tree), Some(&current), None).unwrap();
-            // let diff = repository.diff_tree_to_workdir(Some(&current), None).unwrap();
-            let author = commit.author();
-            let author_name = replace_umlauts(author.name().unwrap_or_default());
-
-            let inner_map = hot_paths.entry(author_name).or_insert_with(BTreeMap::new);
-
-            for delta in diff.deltas() {
-                let directory = delta.new_file().path().unwrap();
-                for ancestor in directory.ancestors().skip(1) {
-                    let path_count = inner_map.entry(ancestor.to_path_buf()).or_insert(0_u32);
-                    *path_count += 1;
-                }
-            }
-        })
+        // .inspect(|commit| {
+        //     let parent = commit.parent(0).unwrap();
+        //     let parent_tree = parent.tree().unwrap();
+        //     let current = commit.tree().unwrap();
+        //     let diff = repository.diff_tree_to_tree(Some(&parent_tree), Some(&current), None).unwrap();
+        //     // let diff = repository.diff_tree_to_workdir(Some(&current), None).unwrap();
+        //     let author = commit.author();
+        //     let author_name = replace_umlauts(author.name().unwrap_or_default());
+        //
+        //     let inner_map = hot_paths.entry(author_name).or_insert_with(BTreeMap::new);
+        //
+        //     for delta in diff.deltas() {
+        //         let directory = delta.new_file().path().unwrap();
+        //         for ancestor in directory.ancestors().skip(1) {
+        //             let path_count = inner_map.entry(ancestor.to_path_buf()).or_insert(0_u32);
+        //             *path_count += 1;
+        //         }
+        //     }
+        // })
         .for_each(drop);
 
+    ui::render_coauthors(pair_counts)?
 
-    for (author, hot_paths) in hot_paths {
-        println!("{}", author);
-        let mut hot_paths = hot_paths.into_iter()
-            .filter(|(path, _)| path.iter().count() <= hot_path_depth)
-            .collect::<Vec<_>>();
-        hot_paths.sort_by_key(|(_, count)| u32::max_value() - count);
-        hot_paths.into_iter().for_each(|(path, count)| println!("{} => {:?}", count, path))
-    }
+    // for (author, hot_paths) in hot_paths {
+    //     println!("{}", author);
+    //     let mut hot_paths = hot_paths.into_iter()
+    //         .filter(|(path, _)| path.iter().count() <= hot_path_depth)
+    //         .collect::<Vec<_>>();
+    //     hot_paths.sort_by_key(|(_, count)| u32::max_value() - count);
+    //     hot_paths.into_iter().for_each(|(path, count)| println!("{} => {:?}", count, path))
+    // }
 
     // println!("{:#?}", pair_counts);
     // println!("{:#?}", hot_paths);
@@ -123,7 +128,8 @@ fn main() {
 }
 
 fn get_navigators(commit_message: &str) -> Vec<&str> {
-    commit_message.lines()
+    commit_message
+        .lines()
         .filter_map(|line| coauthor::get_co_author(line))
         .map(|coauthor| coauthor.name)
         .collect()
@@ -149,7 +155,7 @@ fn replace_umlauts(input: &str) -> String {
     for c in input.chars() {
         match replacements.get(&c) {
             Some(replacement) => new_string.push_str(replacement),
-            None => new_string.push(c)
+            None => new_string.push(c),
         }
     }
     new_string
@@ -173,8 +179,17 @@ mod coauthor {
         &input[0..input.len() - (input.iter().rev().take_while(|c| **c == b' ').count())]
     }
 
-    named!(co_authored_by<Vec<&[u8]>>, many1!(ws!(tag_no_case!("co-authored-by:"))));
-    named!(co_author<&[u8]>, preceded!(co_authored_by, map!(take_till!(|c| c == b'<'), byte_string_trim)));
+    named!(
+        co_authored_by<Vec<&[u8]>>,
+        many1!(ws!(tag_no_case!("co-authored-by:")))
+    );
+    named!(
+        co_author<&[u8]>,
+        preceded!(
+            co_authored_by,
+            map!(take_till!(|c| c == b'<'), byte_string_trim)
+        )
+    );
 
     //
     // fn sp<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
