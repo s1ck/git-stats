@@ -9,7 +9,7 @@ use tui::backend::{Backend, TermionBackend};
 use tui::layout::{Constraint, Direction, Layout};
 use tui::style::{Color, Modifier, Style};
 use tui::widgets::ListState;
-use tui::widgets::{BarChart, Block, Borders, List, ListItem};
+use tui::widgets::{Block, Borders, List, ListItem, StackableBarChart, ValuePlacement};
 use tui::{Frame, Terminal};
 use unicode_width::UnicodeWidthStr;
 
@@ -17,6 +17,8 @@ pub fn render_coauthors(
     navigator_counts: BTreeMap<String, BTreeMap<String, u32>>,
     co_author_counts: BTreeMap<String, BTreeMap<String, u32>>,
 ) -> eyre::Result<()> {
+    let mut app = App::new("Git stats", navigator_counts, co_author_counts);
+
     let events = Events::with_config(Config::default());
 
     let stdout = io::stdout().into_raw_mode()?;
@@ -25,7 +27,6 @@ pub fn render_coauthors(
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new("Git stats", navigator_counts, co_author_counts);
 
     loop {
         terminal.draw(|frame| draw(frame, &mut app))?;
@@ -90,38 +91,50 @@ fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
 
     frame.render_stateful_widget(list, chunks[0], &mut app.authors.state);
 
-    let inner_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
-        .split(chunks[1]);
+    let area = chunks[1];
 
     let author = app.authors.current().unwrap();
 
     let co_author_tuples = app.co_author_tuples(author);
-    let bar_width_co_author =
-        usize::from(inner_chunks[0].width) / co_author_tuples.len() - bar_gap as usize;
-    let co_authors_barchart = BarChart::default()
+    let max_co_author_commits = co_author_tuples
+        .iter()
+        .map(|ca| ca.1)
+        .max()
+        .unwrap_or_default();
+
+    let width_per_co_author = usize::from(area.width) / co_author_tuples.len().max(1);
+    let bar_width_co_author = width_per_co_author
+        .saturating_sub(usize::from(bar_gap))
+        .max(1);
+    let co_authors_barchart = StackableBarChart::default()
         .block(Block::default().title("Co-Authors").borders(Borders::ALL))
         .data(&co_author_tuples[..])
         .bar_gap(bar_gap)
         .bar_width(bar_width_co_author as u16)
         .bar_style(Style::default().fg(Color::Red))
-        .value_style(Style::default().fg(Color::Black).bg(Color::Red));
+        .value_style(Style::default().fg(Color::Black).bg(Color::Red))
+        .value_placement(ValuePlacement::Top);
 
-    frame.render_widget(co_authors_barchart, inner_chunks[0]);
+    frame.render_widget(co_authors_barchart, area);
 
     let navigator_tuples = app.navigator_tuples(author);
-    let bar_width_navigator =
-        usize::from(inner_chunks[1].width) / navigator_tuples.len() - bar_gap as usize;
-    let navigators_barchart = BarChart::default()
-        .block(Block::default().title("Navigators").borders(Borders::ALL))
+    let width_per_navigator = usize::from(area.width) / navigator_tuples.len().max(1);
+    let bar_width_navigator = width_per_navigator
+        .saturating_sub(usize::from(bar_gap))
+        .max(1);
+    let navigators_barchart = StackableBarChart::default()
         .data(&navigator_tuples[..])
+        .max(max_co_author_commits)
         .bar_gap(bar_gap)
         .bar_width(bar_width_navigator as u16)
         .bar_style(Style::default().fg(Color::Yellow))
         .value_style(Style::default().fg(Color::Black).bg(Color::Yellow));
 
-    frame.render_widget(navigators_barchart, inner_chunks[1]);
+    let area = Layout::default()
+        .margin(1)
+        .constraints([Constraint::Percentage(100)].as_ref())
+        .split(area);
+    frame.render_widget(navigators_barchart, area[0]);
 }
 
 pub struct App<'a> {
@@ -135,10 +148,35 @@ pub struct App<'a> {
 impl<'a> App<'a> {
     pub fn new(
         title: &'a str,
-        navigator_counts: BTreeMap<String, BTreeMap<String, u32>>,
-        co_author_counts: BTreeMap<String, BTreeMap<String, u32>>,
+        mut navigator_counts: BTreeMap<String, BTreeMap<String, u32>>,
+        mut co_author_counts: BTreeMap<String, BTreeMap<String, u32>>,
     ) -> App<'a> {
-        let authors = navigator_counts.keys().map(|s| s.clone()).collect_vec();
+        let authors = navigator_counts
+            .keys()
+            .chain(co_author_counts.keys())
+            .unique()
+            .cloned()
+            .collect_vec();
+
+        for author in &authors {
+            let inner_navigators = navigator_counts
+                .entry(author.clone())
+                .or_insert_with(|| BTreeMap::new());
+
+            let inner_co_authors = co_author_counts
+                .entry(author.clone())
+                .or_insert_with(|| BTreeMap::new());
+
+            for author in &authors {
+                if !inner_navigators.contains_key(author) {
+                    inner_navigators.insert(author.clone(), 0);
+                }
+
+                if !inner_co_authors.contains_key(author) {
+                    inner_co_authors.insert(author.clone(), 0);
+                }
+            }
+        }
 
         App {
             title,

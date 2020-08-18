@@ -769,8 +769,7 @@ dependencies = [
 [[package]]
 name = "tui"
 version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a977b0bb2e2033a6fef950f218f13622c3c34e59754b704ce3492dedab1dfe95"
+source = "git+https://github.com/knutwalker/tui-rs?branch=stackable-bar-chart#6758a0cb3ddc626fda6d4d93f5bc74b90751bfb7"
 dependencies = [
  "bitflags",
  "cassowary",
