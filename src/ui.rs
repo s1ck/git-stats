@@ -18,17 +18,18 @@ pub fn render_coauthors(driver_count: BTreeMap<String, BTreeMap<String, u32>>, p
 
     let author = "Paul Horn";
     let counts = &driver_count[author];
-    let co_author_tuples = counts
+    let navigator_tuples = counts
+        .iter()
+        .map(|(navigator, count)| (navigator.as_str(), (*count as u64)))
+        .collect::<Vec<_>>();
+
+    let pairs = &pair_count[author];
+    let co_author_tuples = pairs
         .iter()
         .map(|(co_author, count)| (co_author.as_str(), (*count as u64)))
         .collect::<Vec<_>>();
 
-    let pair_tuples = counts
-        .iter()
-        .map(|(co_author, count)| (co_author.as_str(), (*count as u64 + 42)))
-        .collect::<Vec<_>>();
-
-    let max_pair_count = pair_tuples.iter().map(|(_, count)| {*count}).max().unwrap_or_default();
+    let bar_gap = 5_u16;
 
     loop {
         terminal.draw(|frame| {
@@ -44,26 +45,33 @@ pub fn render_coauthors(driver_count: BTreeMap<String, BTreeMap<String, u32>>, p
                 .highlight_style(Style::default().add_modifier(Modifier::ITALIC))
                 .highlight_symbol(">>");
 
-            let bar_width = usize::from(chunks[1].width) / co_author_tuples.len();
+            let inner_chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+                .split(chunks[1]);
 
-            let co_author_barchart = BarChart::default()
-                .block(Block::default().title("Co-authors").borders(Borders::ALL))
+            let bar_width_co_author = usize::from(inner_chunks[0].width) / co_author_tuples.len() - bar_gap as usize;
+            let bar_width_navigator = usize::from(inner_chunks[1].width) / navigator_tuples.len() - bar_gap as usize;
+
+            let co_authors_barchart = BarChart::default()
+                .block(Block::default().title("Co-Authors").borders(Borders::ALL))
                 .data(&co_author_tuples[..])
-                .bar_width(bar_width as u16)
-                .bar_style(Style::default().fg(Color::Yellow))
-                .value_style(Style::default().fg(Color::Black).bg(Color::Yellow));
-
-            let pair_barchart = BarChart::default()
-                .block(Block::default().title("Pairs").borders(Borders::ALL))
-                .data(&pair_tuples[..])
-                .bar_width(bar_width as u16)
+                .bar_gap(bar_gap)
+                .bar_width(bar_width_co_author as u16)
                 .bar_style(Style::default().fg(Color::Red))
                 .value_style(Style::default().fg(Color::Black).bg(Color::Red));
 
-            frame.render_widget(list, chunks[0]);
+            let navigators_barchart = BarChart::default()
+                .block(Block::default().title("Navigators").borders(Borders::ALL))
+                .data(&navigator_tuples[..])
+                .bar_gap(bar_gap)
+                .bar_width(bar_width_navigator as u16)
+                .bar_style(Style::default().fg(Color::Yellow))
+                .value_style(Style::default().fg(Color::Black).bg(Color::Yellow));
 
-            frame.render_widget(pair_barchart, chunks[1]);
-            // frame.render_widget(co_author_barchart, chunks[1]);
+            frame.render_widget(list, chunks[0]);
+            frame.render_widget(co_authors_barchart, inner_chunks[0]);
+            frame.render_widget(navigators_barchart, inner_chunks[1]);
         });
 
         let keys = io::stdin().keys().next();
