@@ -1,19 +1,22 @@
-use std::{io, thread};
 use std::collections::BTreeMap;
 use std::sync::mpsc;
+use std::{io, thread};
 
 use itertools::Itertools;
-use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
 use termion::input::TermRead;
-use tui::{Frame, Terminal};
+use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
 use tui::backend::{Backend, TermionBackend};
 use tui::layout::{Constraint, Direction, Layout};
 use tui::style::{Color, Modifier, Style};
-use tui::widgets::{BarChart, Block, Borders, List, ListItem};
 use tui::widgets::ListState;
+use tui::widgets::{BarChart, Block, Borders, List, ListItem};
+use tui::{Frame, Terminal};
 use unicode_width::UnicodeWidthStr;
 
-pub fn render_coauthors(navigator_counts: BTreeMap<String, BTreeMap<String, u32>>, co_author_counts: BTreeMap<String, BTreeMap<String, u32>>) -> eyre::Result<()> {
+pub fn render_coauthors(
+    navigator_counts: BTreeMap<String, BTreeMap<String, u32>>,
+    co_author_counts: BTreeMap<String, BTreeMap<String, u32>>,
+) -> eyre::Result<()> {
     let events = Events::with_config(Config::default());
 
     let stdout = io::stdout().into_raw_mode()?;
@@ -25,7 +28,7 @@ pub fn render_coauthors(navigator_counts: BTreeMap<String, BTreeMap<String, u32>
     let mut app = App::new("Git stats", navigator_counts, co_author_counts);
 
     loop {
-        terminal.draw(|frame| { draw(frame, &mut app) })?;
+        terminal.draw(|frame| draw(frame, &mut app))?;
 
         match events.next()? {
             Event::Input(key) => match key {
@@ -39,7 +42,7 @@ pub fn render_coauthors(navigator_counts: BTreeMap<String, BTreeMap<String, u32>
                     app.on_down();
                 }
                 _ => {}
-            }
+            },
         }
 
         if app.should_quit {
@@ -52,14 +55,24 @@ pub fn render_coauthors(navigator_counts: BTreeMap<String, BTreeMap<String, u32>
 fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
     let bar_gap = 5_u16;
 
-    let author_widget_width = app.authors.items.iter()
+    let author_widget_width = app
+        .authors
+        .items
+        .iter()
         .map(|author| author.width())
         .max()
-        .unwrap_or_default() + ">>".width();
+        .unwrap_or_default()
+        + ">>".width();
 
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(author_widget_width as u16), Constraint::Min(0)].as_ref())
+        .constraints(
+            [
+                Constraint::Length(author_widget_width as u16),
+                Constraint::Min(0),
+            ]
+            .as_ref(),
+        )
         .split(frame.size());
 
     let authors = app
@@ -85,7 +98,8 @@ fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
     let author = app.authors.current().unwrap();
 
     let co_author_tuples = app.co_author_tuples(author);
-    let bar_width_co_author = usize::from(inner_chunks[0].width) / co_author_tuples.len() - bar_gap as usize;
+    let bar_width_co_author =
+        usize::from(inner_chunks[0].width) / co_author_tuples.len() - bar_gap as usize;
     let co_authors_barchart = BarChart::default()
         .block(Block::default().title("Co-Authors").borders(Borders::ALL))
         .data(&co_author_tuples[..])
@@ -97,7 +111,8 @@ fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
     frame.render_widget(co_authors_barchart, inner_chunks[0]);
 
     let navigator_tuples = app.navigator_tuples(author);
-    let bar_width_navigator = usize::from(inner_chunks[1].width) / navigator_tuples.len() - bar_gap as usize;
+    let bar_width_navigator =
+        usize::from(inner_chunks[1].width) / navigator_tuples.len() - bar_gap as usize;
     let navigators_barchart = BarChart::default()
         .block(Block::default().title("Navigators").borders(Borders::ALL))
         .data(&navigator_tuples[..])
@@ -121,9 +136,9 @@ impl<'a> App<'a> {
     pub fn new(
         title: &'a str,
         navigator_counts: BTreeMap<String, BTreeMap<String, u32>>,
-        co_author_counts: BTreeMap<String, BTreeMap<String, u32>>) -> App<'a>
-    {
-        let authors = navigator_counts.keys().map(|s| {s.clone()}).collect_vec();
+        co_author_counts: BTreeMap<String, BTreeMap<String, u32>>,
+    ) -> App<'a> {
+        let authors = navigator_counts.keys().map(|s| s.clone()).collect_vec();
 
         App {
             title,
@@ -136,25 +151,21 @@ impl<'a> App<'a> {
 
     pub fn co_author_tuples(&self, author: &str) -> Vec<(&str, u64)> {
         match self.co_author_counts.get(author) {
-            Some(co_authors) => {
-                co_authors
-                    .iter()
-                    .map(|(navigator, count)| (navigator.as_str(), (*count as u64)))
-                    .collect::<Vec<_>>()
-            },
-            None => vec![]
+            Some(co_authors) => co_authors
+                .iter()
+                .map(|(navigator, count)| (navigator.as_str(), (*count as u64)))
+                .collect::<Vec<_>>(),
+            None => vec![],
         }
     }
 
     pub fn navigator_tuples(&self, author: &str) -> Vec<(&str, u64)> {
         match self.navigator_counts.get(author) {
-            Some(co_authors) => {
-                co_authors
-                    .iter()
-                    .map(|(navigator, count)| (navigator.as_str(), (*count as u64)))
-                    .collect::<Vec<_>>()
-            },
-            None => vec![]
+            Some(co_authors) => co_authors
+                .iter()
+                .map(|(navigator, count)| (navigator.as_str(), (*count as u64)))
+                .collect::<Vec<_>>(),
+            None => vec![],
         }
     }
 
@@ -182,16 +193,12 @@ pub struct StatefulList<T> {
 }
 
 impl<T> StatefulList<T> {
-
     pub fn with_items(items: Vec<T>) -> StatefulList<T> {
         let mut state = ListState::default();
         if !items.is_empty() {
             state.select(Some(0));
         }
-        StatefulList {
-            state,
-            items,
-        }
+        StatefulList { state, items }
     }
 
     pub fn current(&self) -> Option<&T> {
