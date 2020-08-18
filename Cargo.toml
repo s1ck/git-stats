@@ -28,6 +28,7 @@ once_cell = "1.4.0"
 termion = "1.5.5"
 thiserror = "1.0.20"
 tui = { version = "0.10.0", features = ["termion"] }
+unicode-width = "0.1.8"
 
 [dev-dependencies]
 test-case = "1.0.0"
