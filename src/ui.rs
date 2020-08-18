@@ -27,7 +27,6 @@ pub fn render_coauthors(
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-
     loop {
         terminal.draw(|frame| draw(frame, &mut app))?;
 
@@ -151,32 +150,54 @@ impl<'a> App<'a> {
         mut navigator_counts: BTreeMap<String, BTreeMap<String, u32>>,
         mut co_author_counts: BTreeMap<String, BTreeMap<String, u32>>,
     ) -> App<'a> {
-        let authors = navigator_counts
+        let all_authors = navigator_counts
             .keys()
             .chain(co_author_counts.keys())
             .unique()
             .cloned()
             .collect_vec();
 
-        for author in &authors {
-            let inner_navigators = navigator_counts
-                .entry(author.clone())
-                .or_insert_with(|| BTreeMap::new());
+        for author in &all_authors {
+            let inner_navigators = navigator_counts.get_mut(author);
+            let inner_co_authors = co_author_counts.get_mut(author);
 
-            let inner_co_authors = co_author_counts
-                .entry(author.clone())
-                .or_insert_with(|| BTreeMap::new());
+            match (inner_navigators, inner_co_authors) {
+                // key doesn't exist on either side (should never really happen)
+                (None, None) => continue,
+                // don't propagate navigators-only into the driver counts
+                (None, Some(_)) => continue,
+                // driver counts only, add zero value entries as navigators
+                (Some(inner_navigators), None) => {
+                    let inner_co_authors = co_author_counts.entry(author.clone()).or_default();
 
-            for author in &authors {
-                if !inner_navigators.contains_key(author) {
-                    inner_navigators.insert(author.clone(), 0);
+                    for key in inner_navigators.keys() {
+                        inner_co_authors.insert(key.clone(), 0);
+                    }
                 }
+                // (None, Some(inner_co_authors)) => {
+                //     let inner_navigators = navigator_counts.entry(author.clone()).or_default();
 
-                if !inner_co_authors.contains_key(author) {
-                    inner_co_authors.insert(author.clone(), 0);
+                //     for key in inner_co_authors.keys() {
+                //         inner_navigators.insert(key.clone(), 0);
+                //     }
+                // }
+                // merge driver counts with navigator counts
+                (Some(inner_navigators), Some(inner_co_authors)) => {
+                    for key in inner_co_authors.keys() {
+                        inner_navigators.entry(key.clone()).or_default();
+                    }
+                    for key in inner_navigators.keys() {
+                        inner_co_authors.entry(key.clone()).or_default();
+                    }
                 }
             }
         }
+
+        let authors = navigator_counts
+            .iter()
+            .filter(|(_, inner)| !inner.is_empty())
+            .map(|(author, _)| author.clone())
+            .collect_vec();
 
         App {
             title,

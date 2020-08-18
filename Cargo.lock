@@ -769,7 +769,7 @@ dependencies = [
 [[package]]
 name = "tui"
 version = "0.10.0"
-source = "git+https://github.com/knutwalker/tui-rs?branch=stackable-bar-chart#6758a0cb3ddc626fda6d4d93f5bc74b90751bfb7"
+source = "git+https://github.com/knutwalker/tui-rs?branch=stackable-bar-chart#a394b56095adbd9bccaabbc7d479509973fbda3a"
 dependencies = [
  "bitflags",
  "cassowary",
