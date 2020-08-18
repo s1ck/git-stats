@@ -9,7 +9,7 @@ use tui::style::{Color, Modifier, Style};
 use tui::widgets::{BarChart, Block, Borders, List, ListItem};
 use tui::Terminal;
 
-pub fn render_coauthors(pair_counts: BTreeMap<String, BTreeMap<String, u32>>) -> eyre::Result<()> {
+pub fn render_coauthors(driver_count: BTreeMap<String, BTreeMap<String, u32>>, pair_count: BTreeMap<String, BTreeMap<String, u32>>) -> eyre::Result<()> {
     let stdout = io::stdout().into_raw_mode()?;
     let stdout = MouseTerminal::from(stdout);
     let stdout = AlternateScreen::from(stdout);
@@ -17,11 +17,18 @@ pub fn render_coauthors(pair_counts: BTreeMap<String, BTreeMap<String, u32>>) ->
     let mut terminal = Terminal::new(backend)?;
 
     let author = "Paul Horn";
-    let counts = &pair_counts[author];
+    let counts = &driver_count[author];
     let co_author_tuples = counts
         .iter()
-        .map(|(co_author, count)| (co_author.as_str(), *count as u64))
+        .map(|(co_author, count)| (co_author.as_str(), (*count as u64)))
         .collect::<Vec<_>>();
+
+    let pair_tuples = counts
+        .iter()
+        .map(|(co_author, count)| (co_author.as_str(), (*count as u64 + 42)))
+        .collect::<Vec<_>>();
+
+    let max_pair_count = pair_tuples.iter().map(|(_, count)| {*count}).max().unwrap_or_default();
 
     loop {
         terminal.draw(|frame| {
@@ -39,16 +46,24 @@ pub fn render_coauthors(pair_counts: BTreeMap<String, BTreeMap<String, u32>>) ->
 
             let bar_width = usize::from(chunks[1].width) / co_author_tuples.len();
 
-            let barchart = BarChart::default()
+            let co_author_barchart = BarChart::default()
                 .block(Block::default().title("Co-authors").borders(Borders::ALL))
                 .data(&co_author_tuples[..])
                 .bar_width(bar_width as u16)
                 .bar_style(Style::default().fg(Color::Yellow))
                 .value_style(Style::default().fg(Color::Black).bg(Color::Yellow));
 
+            let pair_barchart = BarChart::default()
+                .block(Block::default().title("Pairs").borders(Borders::ALL))
+                .data(&pair_tuples[..])
+                .bar_width(bar_width as u16)
+                .bar_style(Style::default().fg(Color::Red))
+                .value_style(Style::default().fg(Color::Black).bg(Color::Red));
+
             frame.render_widget(list, chunks[0]);
 
-            frame.render_widget(barchart, chunks[1]);
+            frame.render_widget(pair_barchart, chunks[1]);
+            // frame.render_widget(co_author_barchart, chunks[1]);
         });
 
         let keys = io::stdin().keys().next();

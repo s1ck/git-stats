@@ -13,6 +13,7 @@ use color_eyre::Section;
 use eyre::Report;
 use fehler::throws;
 use git2::{Repository, Revwalk};
+use itertools::Itertools;
 use nom::lib::std::collections::HashMap;
 use once_cell::sync::Lazy;
 
@@ -54,7 +55,7 @@ fn main() {
     let mut revwalk: Revwalk = repository.revwalk()?;
     revwalk.push_head()?;
 
-    let mut pair_counts = BTreeMap::new();
+    let mut driver_counts = BTreeMap::new();
     // let mut hot_paths = BTreeMap::new();
 
     revwalk
@@ -73,7 +74,7 @@ fn main() {
             let author_name = replace_umlauts(author_name);
             let navigators = get_navigators(commit_message);
 
-            let inner_map = pair_counts.entry(author_name).or_insert_with(BTreeMap::new);
+            let inner_map = driver_counts.entry(author_name).or_insert_with(BTreeMap::new);
 
             if navigators.is_empty() {
                 let single_counts = inner_map.entry(String::from("han_solo")).or_insert(0_u32);
@@ -107,7 +108,23 @@ fn main() {
         // })
         .for_each(drop);
 
-    ui::render_coauthors(pair_counts)?
+    let groups = driver_counts.iter().flat_map(|(driver, navigators)| {
+        navigators.iter().flat_map(move |(navigator, count)| {
+            vec!((driver.clone(), (navigator.clone(), count)), (navigator.clone(), (driver.clone(), count)))
+        })
+    }).into_group_map();
+
+    let pair_counts = groups.into_iter()
+        .map(|(key, co_committers)| {
+            let co_committers = co_committers.into_iter().into_group_map().into_iter()
+                .map(|(co_comitter, counts)| {
+                    let sum = counts.into_iter().sum::<u32>();
+                    (co_comitter, sum)
+                }).collect::<BTreeMap<_, _>>();
+            (key, co_committers)
+    }).collect::<BTreeMap<_, _>>();
+
+    ui::render_coauthors(driver_counts, pair_counts)?
 
     // for (author, hot_paths) in hot_paths {
     //     println!("{}", author);
