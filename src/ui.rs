@@ -90,7 +90,11 @@ fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
 
     frame.render_stateful_widget(list, chunks[0], &mut app.authors.state);
 
-    let area = chunks[1];
+    let co_authors_area = chunks[1];
+    let navigators_area = Layout::default()
+        .margin(1)
+        .constraints([Constraint::Percentage(100)].as_ref())
+        .split(co_authors_area)[0];
 
     let author = app.authors.current().unwrap();
 
@@ -101,7 +105,9 @@ fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
         .max()
         .unwrap_or_default();
 
-    let width_per_co_author = usize::from(area.width) / co_author_tuples.len().max(1);
+    // need to use the navigators_area as base for the bar width
+    // as the co_authors_area also contains the block
+    let width_per_co_author = usize::from(navigators_area.width) / co_author_tuples.len().max(1);
     let bar_width_co_author = width_per_co_author
         .saturating_sub(usize::from(bar_gap))
         .max(1);
@@ -114,10 +120,10 @@ fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
         .value_style(Style::default().fg(Color::Black).bg(Color::Red))
         .value_placement(ValuePlacement::Top);
 
-    frame.render_widget(co_authors_barchart, area);
+    frame.render_widget(co_authors_barchart, co_authors_area);
 
     let navigator_tuples = app.navigator_tuples(author);
-    let width_per_navigator = usize::from(area.width) / navigator_tuples.len().max(1);
+    let width_per_navigator = usize::from(navigators_area.width) / navigator_tuples.len().max(1);
     let bar_width_navigator = width_per_navigator
         .saturating_sub(usize::from(bar_gap))
         .max(1);
@@ -129,11 +135,7 @@ fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
         .bar_style(Style::default().fg(Color::Yellow))
         .value_style(Style::default().fg(Color::Black).bg(Color::Yellow));
 
-    let area = Layout::default()
-        .margin(1)
-        .constraints([Constraint::Percentage(100)].as_ref())
-        .split(area);
-    frame.render_widget(navigators_barchart, area[0]);
+    frame.render_widget(navigators_barchart, navigators_area);
 }
 
 pub struct App<'a> {
