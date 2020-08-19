@@ -53,7 +53,7 @@ pub fn render_coauthors(
 }
 
 fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
-    let bar_gap = 5_u16;
+    let bar_gap = 3_u16;
 
     let author_widget_width = app
         .authors
