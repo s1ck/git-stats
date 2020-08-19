@@ -28,6 +28,35 @@ struct Opts {
     /// Depth of hot path investigation
     #[clap(short, long, default_value = "4")]
     depth: usize,
+    /// Replace authors based on this map. Can be specified multiple times, value are delimited by `=`
+    #[clap(short = "R", long, parse(try_from_str = parse_key_val), number_of_values = 1)]
+    replacement: Vec<(String, String)>,
+}
+
+/// Parse a replacement key-value pair
+fn parse_key_val(s: &str) -> eyre::Result<(String, String)> {
+    let pos = s
+        .find('=')
+        .ok_or_else(|| eyre::eyre!("invalid KEY=value: no `=` found in `{}`", s))?;
+    Ok((s[..pos].into(), s[pos + 1..].into()))
+}
+
+impl Opts {
+    fn normalize_author_name(&self, name: &str) -> String {
+        let name = self
+            .replacement
+            .iter()
+            .filter_map(|(replacing, replacements)| {
+                if name == replacing.as_str() {
+                    Some(replacements.as_str())
+                } else {
+                    None
+                }
+            })
+            .next()
+            .unwrap_or(name);
+        replace_umlauts(name)
+    }
 }
 
 // #[throws(Report)]
@@ -71,10 +100,12 @@ fn main() {
             let author = commit.author();
             let author_name = author.name().unwrap_or_default();
             let commit_message = commit.message().unwrap_or_default();
-            let author_name = replace_umlauts(author_name);
+            let author_name = opts.normalize_author_name(author_name);
             let navigators = get_navigators(commit_message);
 
-            let inner_map = driver_counts.entry(author_name).or_insert_with(BTreeMap::new);
+            let inner_map = driver_counts
+                .entry(author_name)
+                .or_insert_with(BTreeMap::new);
 
             if navigators.is_empty() {
                 let single_counts = inner_map.entry(String::from("han_solo")).or_insert(0_u32);
@@ -82,7 +113,7 @@ fn main() {
             }
 
             for navigator in navigators {
-                let navigator = replace_umlauts(navigator);
+                let navigator = opts.normalize_author_name(navigator);
                 let pair_counts = inner_map.entry(navigator).or_insert(0_u32);
                 *pair_counts += 1;
             }
@@ -108,21 +139,33 @@ fn main() {
         // })
         .for_each(drop);
 
-    let groups = driver_counts.iter().flat_map(|(driver, navigators)| {
-        navigators.iter().flat_map(move |(navigator, count)| {
-            vec!((driver.clone(), (navigator.clone(), count)), (navigator.clone(), (driver.clone(), count)))
+    let groups = driver_counts
+        .iter()
+        .flat_map(|(driver, navigators)| {
+            navigators.iter().flat_map(move |(navigator, count)| {
+                vec![
+                    (driver.clone(), (navigator.clone(), count)),
+                    (navigator.clone(), (driver.clone(), count)),
+                ]
+            })
         })
-    }).into_group_map();
+        .into_group_map();
 
-    let pair_counts = groups.into_iter()
+    let pair_counts = groups
+        .into_iter()
         .map(|(key, co_committers)| {
-            let co_committers = co_committers.into_iter().into_group_map().into_iter()
+            let co_committers = co_committers
+                .into_iter()
+                .into_group_map()
+                .into_iter()
                 .map(|(co_comitter, counts)| {
                     let sum = counts.into_iter().sum::<u32>();
                     (co_comitter, sum)
-                }).collect::<BTreeMap<_, _>>();
+                })
+                .collect::<BTreeMap<_, _>>();
             (key, co_committers)
-    }).collect::<BTreeMap<_, _>>();
+        })
+        .collect::<BTreeMap<_, _>>();
 
     ui::render_coauthors(driver_counts, pair_counts)?
 
