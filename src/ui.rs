@@ -3,13 +3,16 @@ use std::sync::mpsc;
 use std::{io, thread};
 
 use itertools::Itertools;
+use str_utils::StartsWithIgnoreAsciiCase;
 use termion::input::TermRead;
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
 use tui::backend::{Backend, TermionBackend};
-use tui::layout::{Constraint, Direction, Layout};
+use tui::layout::{Alignment, Constraint, Direction, Layout};
 use tui::style::{Color, Modifier, Style};
 use tui::widgets::ListState;
-use tui::widgets::{Block, Borders, List, ListItem, StackableBarChart, ValuePlacement};
+use tui::widgets::{
+    Block, Borders, List, ListItem, Paragraph, StackableBarChart, ValuePlacement, Wrap,
+};
 use tui::{Frame, Terminal};
 use unicode_width::UnicodeWidthStr;
 
@@ -32,16 +35,12 @@ pub fn render_coauthors(
 
         match events.next()? {
             Event::Input(key) => match key {
-                Key::Char(c) => {
-                    app.on_key(c);
-                }
-                Key::Up => {
-                    app.on_up();
-                }
-                Key::Down => {
-                    app.on_down();
-                }
-                _ => {}
+                Key::Char(c) => app.on_key(c),
+                Key::Up => app.on_up(),
+                Key::Down => app.on_down(),
+                Key::Esc => app.on_escape(),
+                Key::Backspace => app.on_backspace(),
+                _ => (),
             },
         }
 
@@ -75,12 +74,21 @@ fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
         )
         .split(frame.size());
 
-    let authors = app
+    let filtered_authors = app
         .authors
         .items
         .iter()
+        .filter(|s| s.starts_with_ignore_ascii_case(&app.search_filter))
+        .cloned()
+        .collect_vec();
+    app.authors.filter_down(filtered_authors);
+
+    let authors = app
+        .authors
+        .current_items
+        .iter()
         .map(|author| ListItem::new(author.as_str()))
-        .collect::<Vec<_>>();
+        .collect_vec();
 
     let list = List::new(authors)
         .block(Block::default().title("Authors").borders(Borders::ALL))
@@ -88,15 +96,41 @@ fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
         .highlight_style(Style::default().add_modifier(Modifier::ITALIC))
         .highlight_symbol(">>");
 
-    frame.render_stateful_widget(list, chunks[0], &mut app.authors.state);
+    let list_area = if !app.search_filter.is_empty() {
+        let list_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0), Constraint::Max(3)].as_ref())
+            .split(chunks[0]);
+
+        let filter = Paragraph::new(app.search_filter.as_str())
+            .block(Block::default().title("Filter").borders(Borders::ALL))
+            .style(
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true });
+
+        frame.render_widget(filter, list_chunks[1]);
+        list_chunks[0]
+    } else {
+        chunks[0]
+    };
+
+    frame.render_stateful_widget(list, list_area, &mut app.authors.state);
+
+    let author = app.authors.current();
+    let author = match author {
+        Some(author) => author,
+        None => return,
+    };
 
     let co_authors_area = chunks[1];
     let navigators_area = Layout::default()
         .margin(1)
         .constraints([Constraint::Percentage(100)].as_ref())
         .split(co_authors_area)[0];
-
-    let author = app.authors.current().unwrap();
 
     let co_author_tuples = app.co_author_tuples(author);
     let max_co_author_commits = co_author_tuples
@@ -144,6 +178,7 @@ pub struct App<'a> {
     pub authors: StatefulList<String>,
     pub co_author_counts: BTreeMap<String, BTreeMap<String, u32>>,
     pub navigator_counts: BTreeMap<String, BTreeMap<String, u32>>,
+    search_filter: String,
 }
 
 impl<'a> App<'a> {
@@ -207,6 +242,7 @@ impl<'a> App<'a> {
             authors: StatefulList::with_items(authors),
             co_author_counts,
             navigator_counts,
+            search_filter: String::from(""),
         }
     }
 
@@ -240,17 +276,25 @@ impl<'a> App<'a> {
 
     pub fn on_key(&mut self, c: char) {
         match c {
-            'q' => {
-                self.should_quit = true;
-            }
-            _ => {}
+            'Q' => self.should_quit = true,
+            c if c.is_lowercase() || c.is_whitespace() => self.search_filter.push(c),
+            _ => (),
         }
+    }
+
+    pub fn on_escape(&mut self) {
+        self.search_filter.truncate(0);
+    }
+
+    pub fn on_backspace(&mut self) {
+        let _ = self.search_filter.pop();
     }
 }
 
 pub struct StatefulList<T> {
     pub state: ListState,
     pub items: Vec<T>,
+    pub current_items: Vec<T>,
 }
 
 impl<T> StatefulList<T> {
@@ -259,17 +303,31 @@ impl<T> StatefulList<T> {
         if !items.is_empty() {
             state.select(Some(0));
         }
-        StatefulList { state, items }
+        let current_items = Vec::new();
+        StatefulList {
+            state,
+            items,
+            current_items,
+        }
     }
 
     pub fn current(&self) -> Option<&T> {
-        self.items.get(self.state.selected().unwrap_or(0))
+        self.current_items.get(self.state.selected().unwrap_or(0))
+    }
+
+    pub fn filter_down(&mut self, current_items: Vec<T>) {
+        if let Some(i) = &mut self.state.selected() {
+            if *i >= current_items.len() {
+                *i = current_items.len().saturating_sub(1);
+            }
+        }
+        self.current_items = current_items;
     }
 
     pub fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
-                if i >= self.items.len() - 1 {
+                if i >= self.current_items.len().saturating_sub(1) {
                     0
                 } else {
                     i + 1
@@ -284,7 +342,7 @@ impl<T> StatefulList<T> {
         let i = match self.state.selected() {
             Some(i) => {
                 if i == 0 {
-                    self.items.len() - 1
+                    self.current_items.len().saturating_sub(1)
                 } else {
                     i - 1
                 }
@@ -311,7 +369,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Config {
         Config {
-            exit_key: Key::Char('q'),
+            exit_key: Key::Char('Q'),
         }
     }
 }
