@@ -28,9 +28,6 @@ struct Opts {
     /// The default can be seen as if it was defined as `..HEAD`.
     #[clap(long)]
     range: Option<String>,
-    /// Stop execution after parsing, don't show any UI
-    #[clap(long)]
-    stop: bool,
 }
 
 /// Parse a replacement key-value pair
@@ -49,15 +46,9 @@ fn main() {
     let Opts {
         repository,
         replacements,
-        stop,
         range,
     } = opts;
 
-    let mut repo = Repo::open(repository, replacements)?;
-
-    let (driver_counts, pair_counts) = repo.extract_coauthors(range)?;
-
-    if !stop {
-        ui::render_coauthors(driver_counts, pair_counts, repo.into_string_cache())?
-    }
+    let repo = Repo::open(repository, replacements)?;
+    ui::render_coauthors(repo, range)?
 }

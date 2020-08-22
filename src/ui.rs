@@ -1,29 +1,25 @@
-use std::{io, thread};
 use std::sync::mpsc;
+use std::{collections::BTreeMap, io, thread};
 
 use itertools::Itertools;
 use str_utils::StartsWithIgnoreAsciiCase;
-use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
 use termion::input::TermRead;
-use tui::{Frame, Terminal};
+use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
 use tui::backend::{Backend, TermionBackend};
 use tui::layout::{Alignment, Constraint, Direction, Layout};
 use tui::style::{Color, Modifier, Style};
-use tui::widgets::{
-    Block, Borders, List, ListItem, Paragraph, StackableBarChart, ValuePlacement, Wrap,
-};
 use tui::widgets::ListState;
+use tui::widgets::{
+    Block, BorderType, Borders, Clear, List, ListItem, Paragraph, StackableBarChart,
+    ValuePlacement, Wrap,
+};
+use tui::{Frame, Terminal};
 use unicode_width::UnicodeWidthStr;
 
-use crate::repo::AuthorCounts;
-use crate::stringcache::StringCache;
+use crate::repo::{AuthorCounts, Repo, HAN_SOLO};
 
-pub fn render_coauthors(
-    navigator_counts: AuthorCounts,
-    co_author_counts: AuthorCounts,
-    string_cache: StringCache,
-) -> eyre::Result<()> {
-    let mut app = App::new("git stats", navigator_counts, co_author_counts, string_cache);
+pub fn render_coauthors(repo: Repo, range: Option<String>) -> eyre::Result<()> {
+    let mut app = App::new(repo, range);
 
     let events = Events::with_config(Config::default());
 
@@ -38,6 +34,7 @@ pub fn render_coauthors(
 
         match events.next()? {
             Event::Input(key) => match key {
+                Key::Char('\n') => app.on_enter(),
                 Key::Char(c) => app.on_key(c),
                 Key::Up => app.on_up(),
                 Key::Down => app.on_down(),
@@ -56,7 +53,7 @@ pub fn render_coauthors(
 
 fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
     let bar_gap = 3_u16;
-    let string_cache = &app.string_cache;
+    let string_cache = app.repo.string_cache();
 
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -73,13 +70,16 @@ fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
         .authors
         .items
         .iter()
-        .filter(|s| string_cache.get(**s).filter(|s| s.starts_with_ignore_ascii_case(&app.search_filter)).is_some())
+        .filter(|s| {
+            string_cache
+                .get(**s)
+                .filter(|s| s.starts_with_ignore_ascii_case(&app.search_filter))
+                .is_some()
+        })
         .copied()
         .collect_vec();
 
     app.authors.filter_down(filtered_authors);
-
-
 
     let authors = app
         .authors
@@ -169,26 +169,131 @@ fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
         .value_style(Style::default().fg(Color::Black).bg(Color::Yellow));
 
     frame.render_widget(navigators_barchart, navigators_area);
+
+    if let Some(range_filter) = &app.range_filter_popup {
+        let popup = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(
+                [
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(50),
+                    Constraint::Percentage(25),
+                ]
+                .as_ref(),
+            )
+            .split(frame.size())[1];
+
+        let popup = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(
+                [
+                    Constraint::Percentage(45),
+                    Constraint::Percentage(10),
+                    Constraint::Percentage(45),
+                ]
+                .as_ref(),
+            )
+            .split(popup)[1];
+
+        let filter = Block::default()
+            .title("Filter for Commit range")
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(Color::LightGreen));
+
+        frame.render_widget(Clear, popup);
+        frame.render_widget(filter, popup);
+
+        let filter = Paragraph::new(range_filter.filter.as_str())
+            .style(
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::LightGreen)
+                    .add_modifier(Modifier::RAPID_BLINK),
+            )
+            .alignment(Alignment::Left)
+            .wrap(Wrap { trim: true });
+
+        let filter_text = Layout::default()
+            .direction(Direction::Vertical)
+            .horizontal_margin(2)
+            .constraints(
+                [
+                    Constraint::Max(popup.height.saturating_sub(1) / 2),
+                    Constraint::Length(1),
+                    Constraint::Max(popup.height.saturating_sub(1) / 2),
+                ]
+                .as_ref(),
+            )
+            .split(popup);
+        let error_text = filter_text[2];
+        let filter_text = filter_text[1];
+
+        frame.render_widget(filter, filter_text);
+        frame.set_cursor(
+            // Put cursor past the end of the input text
+            filter_text.x + range_filter.filter.width() as u16,
+            // Move one line down, from the border to the input line
+            filter_text.y,
+        );
+
+        if !range_filter.error.is_empty() {
+            let error = Paragraph::new(range_filter.error.as_str())
+                .block(
+                    Block::default()
+                        .border_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
+                        .border_type(BorderType::Double),
+                )
+                .style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
+                .alignment(Alignment::Center)
+                .wrap(Wrap { trim: false });
+
+            frame.render_widget(error, error_text);
+        }
+    }
 }
 
-struct App<'a> {
-    pub title: &'a str,
-    pub should_quit: bool,
-    pub authors: StatefulList<usize>,
-    pub co_author_counts: AuthorCounts,
-    pub navigator_counts: AuthorCounts,
+#[derive(Debug, Default)]
+struct RangeFilter {
+    filter: String,
+    error: String,
+}
+
+struct App {
+    should_quit: bool,
+    authors: StatefulList<usize>,
+    co_author_counts: AuthorCounts,
+    navigator_counts: AuthorCounts,
+    repo: Repo,
     search_filter: String,
-    string_cache: StringCache,
     author_widget_width: u16,
+    range_filter_popup: Option<RangeFilter>,
 }
 
-impl<'a> App<'a> {
-    pub fn new(
-        title: &'a str,
+impl App {
+    fn new(repo: Repo, range: Option<String>) -> App {
+        let mut app = App {
+            should_quit: false,
+            authors: StatefulList::with_items(Default::default()),
+            co_author_counts: Default::default(),
+            navigator_counts: Default::default(),
+            repo,
+            search_filter: String::from(""),
+            author_widget_width: Default::default(),
+            range_filter_popup: Some(RangeFilter {
+                filter: range.unwrap_or_default(),
+                error: Default::default(),
+            }),
+        };
+        app.on_enter();
+        app
+    }
+
+    fn apply_authors(
+        &mut self,
         mut navigator_counts: AuthorCounts,
         mut co_author_counts: AuthorCounts,
-        string_cache: StringCache,
-    ) -> App<'a> {
+    ) {
         let all_authors = navigator_counts
             .keys()
             .chain(co_author_counts.keys())
@@ -225,48 +330,48 @@ impl<'a> App<'a> {
             }
         }
 
-        let authors = navigator_counts
+        let mut authors = navigator_counts
             .iter()
             .filter(|(_, inner)| !inner.is_empty())
             .map(|(author, _)| *author)
             .collect_vec();
 
+        authors.sort_by_key(|k| self.repo.string_cache().get(*k).unwrap_or_default());
+
         let author_widget_width = authors
             .iter()
-            .flat_map(|author| string_cache.get(*author))
+            .flat_map(|author| self.repo.string_cache().get(*author))
             .map(|author| author.width())
             .max()
             .unwrap_or_default()
             + ">>".width();
 
-        App {
-            title,
-            should_quit: false,
-            authors: StatefulList::with_items(authors),
-            co_author_counts,
-            navigator_counts,
-            search_filter: String::from(""),
-            string_cache,
-            author_widget_width: author_widget_width as u16,
-        }
+        self.authors = StatefulList::with_items(authors);
+        self.co_author_counts = co_author_counts;
+        self.navigator_counts = navigator_counts;
+        self.author_widget_width = author_widget_width as u16;
     }
 
     pub fn co_author_tuples(&self, author: &usize) -> Vec<(&str, u64)> {
-        match self.co_author_counts.get(author) {
-            Some(co_authors) => co_authors
-                .iter()
-                .map(|(navigator, count)| (&self.string_cache[*navigator], (*count as u64)))
-                .collect::<Vec<_>>(),
-            None => vec![],
-        }
+        self.value_tuples(self.co_author_counts.get(author))
     }
 
     pub fn navigator_tuples(&self, author: &usize) -> Vec<(&str, u64)> {
-        match self.navigator_counts.get(author) {
-            Some(co_authors) => co_authors
-                .iter()
-                .map(|(navigator, count)| (&self.string_cache[*navigator], (*count as u64)))
-                .collect::<Vec<_>>(),
+        self.value_tuples(self.navigator_counts.get(author))
+    }
+
+    fn value_tuples(&self, author_counts: Option<&BTreeMap<usize, u32>>) -> Vec<(&str, u64)> {
+        match author_counts {
+            Some(co_authors) => {
+                let mut co_authors = co_authors
+                    .iter()
+                    .map(|(navigator, count)| {
+                        (&self.repo.string_cache()[*navigator], (*count as u64))
+                    })
+                    .collect_vec();
+                co_authors.sort_by_key(|(k, _)| if *k == HAN_SOLO { "~" } else { *k });
+                co_authors
+            }
             None => vec![],
         }
     }
@@ -280,19 +385,51 @@ impl<'a> App<'a> {
     }
 
     pub fn on_key(&mut self, c: char) {
-        match c {
-            'Q' => self.should_quit = true,
-            c if c.is_lowercase() || c.is_whitespace() => self.search_filter.push(c),
-            _ => (),
+        if let Some(range_filter) = &mut self.range_filter_popup {
+            range_filter.filter.push(c);
+        } else {
+            match c {
+                'Q' => self.should_quit = true,
+                'R' => self.range_filter_popup = Some(RangeFilter::default()),
+                c if c.is_lowercase() || c.is_whitespace() => self.search_filter.push(c),
+                _ => (),
+            }
+        }
+    }
+
+    pub fn on_enter(&mut self) {
+        if let Some(RangeFilter { filter, error }) = self.range_filter_popup.take() {
+            if filter.is_empty() && !error.is_empty() {
+                self.range_filter_popup = Some(RangeFilter { filter, error });
+                return;
+            }
+            let range_filter = Some(filter).filter(|r| !r.is_empty());
+            match self.repo.extract_coauthors(range_filter) {
+                Ok((navigator_counts, co_author_counts)) => {
+                    self.apply_authors(navigator_counts, co_author_counts)
+                }
+                Err(e) => {
+                    self.range_filter_popup = Some(RangeFilter {
+                        filter: Default::default(),
+                        error: e.to_string(),
+                    })
+                }
+            }
         }
     }
 
     pub fn on_escape(&mut self) {
-        self.search_filter.truncate(0);
+        if let None = self.range_filter_popup.take() {
+            self.search_filter.truncate(0);
+        }
     }
 
     pub fn on_backspace(&mut self) {
-        let _ = self.search_filter.pop();
+        if let Some(range_filter) = &mut self.range_filter_popup {
+            let _ = range_filter.filter.pop();
+        } else {
+            let _ = self.search_filter.pop();
+        }
     }
 }
 

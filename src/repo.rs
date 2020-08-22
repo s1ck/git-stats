@@ -12,7 +12,7 @@ use crate::stringcache::StringCache;
 
 pub type AuthorCounts = BTreeMap<usize, BTreeMap<usize, u32>>;
 
-const HAN_SOLO: &str = "Han Solo";
+pub const HAN_SOLO: &str = "Han Solo";
 
 pub struct Repo {
     repository: Repository,
@@ -37,8 +37,8 @@ impl Repo {
         })
     }
 
-    pub fn into_string_cache(self) -> StringCache {
-        self.string_cache
+    pub fn string_cache(&self) -> &StringCache {
+        &self.string_cache
     }
 
     pub fn extract_coauthors(
