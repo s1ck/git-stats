@@ -5,7 +5,7 @@ extern crate nom;
 
 #[derive(Debug, PartialEq)]
 pub struct CoAuthor<'a> {
-    pub(crate) name: &'a str,
+    pub name: &'a str,
 }
 
 pub fn get_co_author(line: &str) -> Option<CoAuthor> {
@@ -20,16 +20,16 @@ fn byte_string_trim(input: &[u8]) -> &[u8] {
 }
 
 named!(
-        co_authored_by<Vec<&[u8]>>,
-        many1!(ws!(tag_no_case!("co-authored-by:")))
-    );
+    co_authored_by<Vec<&[u8]>>,
+    many1!(ws!(tag_no_case!("co-authored-by:")))
+);
 named!(
-        co_author<&[u8]>,
-        preceded!(
-            co_authored_by,
-            map!(take_till!(|c| c == b'<'), byte_string_trim)
-        )
-    );
+    co_author<&[u8]>,
+    preceded!(
+        co_authored_by,
+        map!(take_till!(|c| c == b'<'), byte_string_trim)
+    )
+);
 
 #[cfg(test)]
 mod tests {
@@ -61,4 +61,3 @@ mod tests {
         get_co_author(input).map(|co_author| co_author.name)
     }
 }
-

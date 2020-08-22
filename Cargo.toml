@@ -3,7 +3,7 @@ members = [ "co-authors" ]
 
 [package]
 name = "git-stats"
-version = "0.1.0"
+version = "0.0.1"
 authors = [
     "Martin Junghanns <martin.junghanns@neotechnology.com>",
     "Paul Horn <paul.horn@neotechnology.com>"
