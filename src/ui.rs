@@ -209,7 +209,7 @@ fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
                 Style::default()
                     .fg(Color::Black)
                     .bg(Color::LightGreen)
-                    .add_modifier(Modifier::RAPID_BLINK),
+                    .add_modifier(Modifier::BOLD),
             )
             .alignment(Alignment::Left)
             .wrap(Wrap { trim: true });
@@ -377,11 +377,15 @@ impl App {
     }
 
     pub fn on_up(&mut self) {
-        self.authors.previous();
+        if let None = &self.range_filter_popup {
+            self.authors.previous();
+        }
     }
 
     pub fn on_down(&mut self) {
-        self.authors.next();
+        if let None = &self.range_filter_popup {
+            self.authors.next();
+        }
     }
 
     pub fn on_key(&mut self, c: char) {
