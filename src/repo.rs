@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::{borrow::Cow, path::PathBuf};
 
 use color_eyre::Section;
 use eyre::Result;
@@ -33,7 +33,7 @@ impl Repo {
         Ok(Repo {
             repository,
             replacements: Replacements(replacements),
-            string_cache
+            string_cache,
         })
     }
 
@@ -70,9 +70,7 @@ impl Repo {
                 let commit_message = commit.message().unwrap_or_default();
                 let navigators = Self::get_navigators(commit_message);
 
-                let inner_map = driver_counts
-                    .entry(author_name)
-                    .or_default();
+                let inner_map = driver_counts.entry(author_name).or_default();
 
                 if navigators.is_empty() {
                     // TODO: move outside
@@ -132,8 +130,9 @@ impl Repo {
 struct Replacements(Vec<(String, String)>);
 
 impl Replacements {
-    fn normalize_author_name(&self, name: &str) -> String {
-        let name = self.0
+    fn normalize_author_name<'a>(&'a self, name: &'a str) -> Cow<'a, str> {
+        let name = self
+            .0
             .iter()
             .filter_map(|(replacing, replacements)| {
                 if name == replacing.as_str() {
@@ -148,7 +147,7 @@ impl Replacements {
         Self::replace_umlauts(name)
     }
 
-    fn replace_umlauts(input: &str) -> String {
+    fn replace_umlauts<'a>(input: &'a str) -> Cow<'a, str> {
         static REPLACEMENTS: Lazy<HashMap<char, &str>> = Lazy::new(|| {
             hashmap! {
                 'Ä' => "Ae",
@@ -162,16 +161,21 @@ impl Replacements {
         });
 
         let replacements = &*REPLACEMENTS;
-
-        let mut new_string = String::new();
-
         for c in input.chars() {
-            match replacements.get(&c) {
-                Some(replacement) => new_string.push_str(replacement),
-                None => new_string.push(c),
+            if replacements.contains_key(&c) {
+                let mut new_string = String::new();
+                for c in input.chars() {
+                    match replacements.get(&c) {
+                        Some(replacement) => new_string.push_str(replacement),
+                        None => new_string.push(c),
+                    }
+                }
+
+                return new_string.into();
             }
         }
-        new_string
+
+        input.into()
     }
 }
 
