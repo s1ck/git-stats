@@ -41,14 +41,19 @@ impl Repo {
         self.string_cache
     }
 
-    pub fn extract_coauthors(&mut self) -> Result<(AuthorCounts, AuthorCounts)> {
+    pub fn extract_coauthors(
+        &mut self,
+        range: Option<String>,
+    ) -> Result<(AuthorCounts, AuthorCounts)> {
         let repository = &self.repository;
         let replacements = &self.replacements;
         let string_cache = &mut self.string_cache;
 
         let mut revwalk: Revwalk = repository.revwalk()?;
-
-        revwalk.push_head()?;
+        match range {
+            Some(range) => revwalk.push_range(range.as_str())?,
+            None => revwalk.push_head()?,
+        };
 
         let mut driver_counts: AuthorCounts = BTreeMap::new();
 
