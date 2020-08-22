@@ -10,8 +10,8 @@ use fehler::throws;
 use crate::repo::Repo;
 
 mod repo;
-mod ui;
 mod stringcache;
+mod ui;
 
 #[derive(Clap, Debug)]
 #[clap(version, author, about, global_setting = AppSettings::ColoredHelp)]
@@ -22,6 +22,9 @@ struct Opts {
     /// Replace authors based on this map. Can be specified multiple times, value are delimited by `=`
     #[clap(short = "R", long="replacement", parse(try_from_str = parse_key_val), number_of_values = 1)]
     replacements: Vec<(String, String)>,
+    /// Stop execution after parsing, don't show any UI
+    #[clap(long)]
+    stop: bool,
 }
 
 /// Parse a replacement key-value pair
@@ -37,11 +40,17 @@ fn main() {
     color_eyre::install()?;
     let opts: Opts = Opts::parse();
 
-    let Opts{ repository, replacements } = opts;
+    let Opts {
+        repository,
+        replacements,
+        stop,
+    } = opts;
 
     let mut repo = Repo::open(repository, replacements)?;
 
     let (driver_counts, pair_counts) = repo.extract_coauthors()?;
 
-    ui::render_coauthors(driver_counts, pair_counts, repo.into_string_cache())?
+    if !stop {
+        ui::render_coauthors(driver_counts, pair_counts, repo.into_string_cache())?
+    }
 }
