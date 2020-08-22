@@ -1,26 +1,30 @@
+use fxhash::FxBuildHasher;
 use indexmap::set::IndexSet;
 use std::ops::Index;
 
 pub struct StringCache {
-    index_set: IndexSet<String>,
+    index_set: IndexSet<String, FxBuildHasher>,
 }
 
 impl StringCache {
-
     pub fn new() -> Self {
-        StringCache { index_set: IndexSet::new() }
+        StringCache {
+            index_set: IndexSet::default(),
+        }
     }
 
-
-    pub fn intern<T>(&mut self, k: T) -> usize where T : AsRef<str> + Into<String> {
+    pub fn intern<T>(&mut self, k: T) -> usize
+    where
+        T: AsRef<str> + Into<String>,
+    {
         match self.index_set.get_index_of(k.as_ref()) {
             Some(idx) => idx,
-            None => self.index_set.insert_full(k.into()).0
+            None => self.index_set.insert_full(k.into()).0,
         }
     }
 
     pub fn get(&self, idx: usize) -> Option<&str> {
-        self.index_set.get_index(idx).map(|s| { s.as_str() })
+        self.index_set.get_index(idx).map(|s| s.as_str())
     }
 }
 
@@ -30,7 +34,7 @@ impl Index<usize> for StringCache {
     fn index(&self, index: usize) -> &Self::Output {
         match self.get(index) {
             Some(item) => item,
-            None => panic!("No entry for index {}", index)
+            None => panic!("No entry for index {}", index),
         }
     }
 }
