@@ -11,6 +11,7 @@ use crate::repo::Repo;
 
 mod repo;
 mod ui;
+mod stringcache;
 
 #[derive(Clap, Debug)]
 #[clap(version, author, about, global_setting = AppSettings::ColoredHelp)]
@@ -38,9 +39,9 @@ fn main() {
 
     let Opts{ repository, replacements } = opts;
 
-    let repo = Repo::open(repository, replacements)?;
+    let mut repo = Repo::open(repository, replacements)?;
 
     let (driver_counts, pair_counts) = repo.extract_coauthors()?;
 
-    ui::render_coauthors(driver_counts, pair_counts)?
+    ui::render_coauthors(driver_counts, pair_counts, repo.into_string_cache())?
 }

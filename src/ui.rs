@@ -1,26 +1,29 @@
-use std::collections::BTreeMap;
-use std::sync::mpsc;
 use std::{io, thread};
+use std::sync::mpsc;
 
 use itertools::Itertools;
 use str_utils::StartsWithIgnoreAsciiCase;
-use termion::input::TermRead;
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
+use termion::input::TermRead;
+use tui::{Frame, Terminal};
 use tui::backend::{Backend, TermionBackend};
 use tui::layout::{Alignment, Constraint, Direction, Layout};
 use tui::style::{Color, Modifier, Style};
-use tui::widgets::ListState;
 use tui::widgets::{
     Block, Borders, List, ListItem, Paragraph, StackableBarChart, ValuePlacement, Wrap,
 };
-use tui::{Frame, Terminal};
+use tui::widgets::ListState;
 use unicode_width::UnicodeWidthStr;
 
+use crate::repo::AuthorCounts;
+use crate::stringcache::StringCache;
+
 pub fn render_coauthors(
-    navigator_counts: BTreeMap<String, BTreeMap<String, u32>>,
-    co_author_counts: BTreeMap<String, BTreeMap<String, u32>>,
+    navigator_counts: AuthorCounts,
+    co_author_counts: AuthorCounts,
+    string_cache: StringCache,
 ) -> eyre::Result<()> {
-    let mut app = App::new("Git stats", navigator_counts, co_author_counts);
+    let mut app = App::new("git stats", navigator_counts, co_author_counts, string_cache);
 
     let events = Events::with_config(Config::default());
 
@@ -53,21 +56,13 @@ pub fn render_coauthors(
 
 fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
     let bar_gap = 3_u16;
-
-    let author_widget_width = app
-        .authors
-        .items
-        .iter()
-        .map(|author| author.width())
-        .max()
-        .unwrap_or_default()
-        + ">>".width();
+    let string_cache = &app.string_cache;
 
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(
             [
-                Constraint::Length(author_widget_width as u16),
+                Constraint::Length(app.author_widget_width),
                 Constraint::Min(0),
             ]
             .as_ref(),
@@ -78,16 +73,20 @@ fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
         .authors
         .items
         .iter()
-        .filter(|s| s.starts_with_ignore_ascii_case(&app.search_filter))
-        .cloned()
+        .filter(|s| string_cache.get(**s).filter(|s| s.starts_with_ignore_ascii_case(&app.search_filter)).is_some())
+        .copied()
         .collect_vec();
+
     app.authors.filter_down(filtered_authors);
+
+
 
     let authors = app
         .authors
         .current_items
         .iter()
-        .map(|author| ListItem::new(author.as_str()))
+        .flat_map(|author| string_cache.get(*author))
+        .map(ListItem::new)
         .collect_vec();
 
     let list = List::new(authors)
@@ -172,31 +171,34 @@ fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
     frame.render_widget(navigators_barchart, navigators_area);
 }
 
-pub struct App<'a> {
+struct App<'a> {
     pub title: &'a str,
     pub should_quit: bool,
-    pub authors: StatefulList<String>,
-    pub co_author_counts: BTreeMap<String, BTreeMap<String, u32>>,
-    pub navigator_counts: BTreeMap<String, BTreeMap<String, u32>>,
+    pub authors: StatefulList<usize>,
+    pub co_author_counts: AuthorCounts,
+    pub navigator_counts: AuthorCounts,
     search_filter: String,
+    string_cache: StringCache,
+    author_widget_width: u16,
 }
 
 impl<'a> App<'a> {
     pub fn new(
         title: &'a str,
-        mut navigator_counts: BTreeMap<String, BTreeMap<String, u32>>,
-        mut co_author_counts: BTreeMap<String, BTreeMap<String, u32>>,
+        mut navigator_counts: AuthorCounts,
+        mut co_author_counts: AuthorCounts,
+        string_cache: StringCache,
     ) -> App<'a> {
         let all_authors = navigator_counts
             .keys()
             .chain(co_author_counts.keys())
+            .copied()
             .unique()
-            .cloned()
             .collect_vec();
 
-        for author in &all_authors {
-            let inner_navigators = navigator_counts.get_mut(author);
-            let inner_co_authors = co_author_counts.get_mut(author);
+        for author in all_authors {
+            let inner_navigators = navigator_counts.get_mut(&author);
+            let inner_co_authors = co_author_counts.get_mut(&author);
 
             match (inner_navigators, inner_co_authors) {
                 // key doesn't exist on either side (should never really happen)
@@ -205,26 +207,19 @@ impl<'a> App<'a> {
                 (None, Some(_)) => continue,
                 // driver counts only, add zero value entries as navigators
                 (Some(inner_navigators), None) => {
-                    let inner_co_authors = co_author_counts.entry(author.clone()).or_default();
+                    let inner_co_authors = co_author_counts.entry(author).or_default();
 
                     for key in inner_navigators.keys() {
-                        inner_co_authors.insert(key.clone(), 0);
+                        inner_co_authors.insert(*key, 0);
                     }
                 }
-                // (None, Some(inner_co_authors)) => {
-                //     let inner_navigators = navigator_counts.entry(author.clone()).or_default();
-
-                //     for key in inner_co_authors.keys() {
-                //         inner_navigators.insert(key.clone(), 0);
-                //     }
-                // }
                 // merge driver counts with navigator counts
                 (Some(inner_navigators), Some(inner_co_authors)) => {
                     for key in inner_co_authors.keys() {
-                        inner_navigators.entry(key.clone()).or_default();
+                        inner_navigators.entry(*key).or_default();
                     }
                     for key in inner_navigators.keys() {
-                        inner_co_authors.entry(key.clone()).or_default();
+                        inner_co_authors.entry(*key).or_default();
                     }
                 }
             }
@@ -233,8 +228,16 @@ impl<'a> App<'a> {
         let authors = navigator_counts
             .iter()
             .filter(|(_, inner)| !inner.is_empty())
-            .map(|(author, _)| author.clone())
+            .map(|(author, _)| *author)
             .collect_vec();
+
+        let author_widget_width = authors
+            .iter()
+            .flat_map(|author| string_cache.get(*author))
+            .map(|author| author.width())
+            .max()
+            .unwrap_or_default()
+            + ">>".width();
 
         App {
             title,
@@ -243,24 +246,26 @@ impl<'a> App<'a> {
             co_author_counts,
             navigator_counts,
             search_filter: String::from(""),
+            string_cache,
+            author_widget_width: author_widget_width as u16,
         }
     }
 
-    pub fn co_author_tuples(&self, author: &str) -> Vec<(&str, u64)> {
+    pub fn co_author_tuples(&self, author: &usize) -> Vec<(&str, u64)> {
         match self.co_author_counts.get(author) {
             Some(co_authors) => co_authors
                 .iter()
-                .map(|(navigator, count)| (navigator.as_str(), (*count as u64)))
+                .map(|(navigator, count)| (&self.string_cache[*navigator], (*count as u64)))
                 .collect::<Vec<_>>(),
             None => vec![],
         }
     }
 
-    pub fn navigator_tuples(&self, author: &str) -> Vec<(&str, u64)> {
+    pub fn navigator_tuples(&self, author: &usize) -> Vec<(&str, u64)> {
         match self.navigator_counts.get(author) {
             Some(co_authors) => co_authors
                 .iter()
-                .map(|(navigator, count)| (navigator.as_str(), (*count as u64)))
+                .map(|(navigator, count)| (&self.string_cache[*navigator], (*count as u64)))
                 .collect::<Vec<_>>(),
             None => vec![],
         }
