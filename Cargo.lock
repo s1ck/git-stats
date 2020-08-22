@@ -138,6 +138,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "co-authors"
+version = "0.0.1"
+dependencies = [
+ "nom",
+ "test-case",
+]
+
+[[package]]
 name = "color-eyre"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -228,6 +236,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "clap",
+ "co-authors",
  "color-eyre",
  "derive_more",
  "eyre",
@@ -237,11 +246,9 @@ dependencies = [
  "indexmap",
  "itertools",
  "maplit",
- "nom",
  "once_cell",
  "str-utils",
  "termion",
- "test-case",
  "thiserror",
  "tui",
  "unicode-width",

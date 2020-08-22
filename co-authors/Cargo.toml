@@ -1,0 +1,21 @@
+[package]
+name = "co-authors"
+version = "0.0.1"
+authors = [
+    "Martin Junghanns <nerdfaktor42@mailbox.org>",
+    "Paul Horn <developer@knutwalker.de>"
+]
+description = "Extract co-authors from a commit message."
+edition = "2018"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/s1ck/git-stats"
+repository = "https://github.com/s1ck/git-stats"
+categories = ["parser-implementations"]
+keywords = ["git", "parser", "co-author"]
+workspace = ".."
+
+[dependencies]
+nom = "5.1.2"
+
+[dev-dependencies]
+test-case = "1.0.0"
