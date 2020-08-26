@@ -13,7 +13,7 @@ use clap::{AppSettings, Clap};
 use cursive::align::{HAlign, VAlign};
 use cursive::event::EventResult;
 use cursive::traits::*;
-use cursive::views::{Dialog, DummyView, LinearLayout, OnEventView, SelectView, TextView};
+use cursive::views::{Dialog, DummyView, LinearLayout, OnEventView, SelectView, TextView, CircularFocus, EditView};
 use cursive::{
     direction::Orientation,
     theme::{BaseColor, Color, ColorStyle},
@@ -23,6 +23,7 @@ use eyre::Report;
 use fehler::throws;
 use repo::Repo;
 use simplelog::*;
+use std::rc::Rc;
 
 mod app;
 mod repo;
@@ -104,6 +105,7 @@ fn main() {
     let mut siv = cursive::default();
 
     siv.set_global_callback('Q', Cursive::quit);
+    siv.set_global_callback('R', show_range_dialog);
 
     // Let's add a ResizedView to keep the list at a reasonable size
     // (it can scroll anyway).
@@ -133,6 +135,42 @@ fn main() {
 fn show_co_authors(siv: &mut Cursive, committer: &str) {
     let mut app = siv.find_name::<App>("co-authors").unwrap();
     app.set_current_author(committer);
+}
+
+fn show_range_dialog(siv: &mut Cursive) {
+    fn ok(siv: &mut Cursive) {
+        let range_start = siv.call_on_name("range_start", |view: &mut EditView| {
+            view.get_content()
+        }).unwrap();
+        let range_end = siv.call_on_name("range_end", |view: &mut EditView| {
+            view.get_content()
+        }).unwrap();
+        let range = format!("{}..{}", range_start, range_end);
+
+        let mut app = siv.find_name::<App>("co-authors").unwrap();
+        app.set_range_filter(range.as_str());
+        app.on_enter();
+        siv.pop_layer();
+    }
+
+    siv.add_layer(
+        Dialog::around(
+        LinearLayout::horizontal()
+            .child(
+                EditView::new()
+                    .with_name("range_start")
+                    .fixed_width(20),
+            )
+            .child(TextView::new(".."))
+            .child(
+                EditView::new()
+                    .with_name("range_end")
+                    .fixed_width(20),
+            ),
+        )
+            .title("Enter commit range")
+            .button("Ok", ok)
+    );
 }
 
 impl cursive::view::View for App {

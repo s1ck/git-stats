@@ -114,6 +114,10 @@ impl App {
         self.current_author = active;
     }
 
+    pub fn set_range_filter(&mut self, range: &str) {
+        self.range_filter_popup = Some(RangeFilter { filter: String::from(range), error: Default::default()})
+    }
+
     pub fn co_author_tuples(&self, author: &usize) -> Vec<(&str, u64)> {
         self.value_tuples(self.co_author_counts.get(author))
     }
