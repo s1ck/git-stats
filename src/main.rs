@@ -4,11 +4,9 @@ extern crate maplit;
 use std::path::PathBuf;
 
 use clap::{AppSettings, Clap};
-use eyre::Report;
-use fehler::throws;
+use repo::Repo;
 
-use crate::repo::Repo;
-
+mod app;
 mod repo;
 mod stringcache;
 mod ui;
@@ -38,8 +36,7 @@ fn parse_key_val(s: &str) -> eyre::Result<(String, String)> {
     Ok((s[..pos].into(), s[pos + 1..].into()))
 }
 
-#[throws(Report)]
-fn main() {
+fn main() -> eyre::Result<()> {
     color_eyre::install()?;
     let opts: Opts = Opts::parse();
 
@@ -50,5 +47,5 @@ fn main() {
     } = opts;
 
     let repo = Repo::open(repository, replacements)?;
-    ui::render_coauthors(repo, range)?
+    ui::render_coauthors(repo, range)
 }

@@ -190,10 +190,10 @@ enum Error {
     NotInGitRepository,
 }
 
-#[derive(derive_more::Display, Debug)]
+#[derive(thiserror::Error, Debug)]
 enum Suggestions {
-    #[display(fmt = "Try running {} from within a Git repository.", APPLICATION)]
+    #[error("Try running {} from within a Git repository.", APPLICATION)]
     NotInGitRepository,
 }
 
-static APPLICATION: &'static str = env!("CARGO_PKG_NAME");
+pub(crate) static APPLICATION: &'static str = env!("CARGO_PKG_NAME");
