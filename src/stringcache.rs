@@ -26,6 +26,14 @@ impl StringCache {
     pub fn get(&self, idx: usize) -> Option<&str> {
         self.index_set.get_index(idx).map(|s| s.as_str())
     }
+
+    pub fn lookup(&self, key: &str) -> Option<usize> {
+        self.index_set.get_index_of(key)
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &str> {
+        self.index_set.iter().map(|s| s.as_str())
+    }
 }
 
 impl Index<usize> for StringCache {

@@ -196,4 +196,4 @@ enum Suggestions {
     NotInGitRepository,
 }
 
-static APPLICATION: &'static str = env!("CARGO_PKG_NAME");
+pub(crate) static APPLICATION: &'static str = env!("CARGO_PKG_NAME");
