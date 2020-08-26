@@ -4,26 +4,22 @@ extern crate maplit;
 #[macro_use]
 extern crate log;
 
-use std::convert::TryFrom;
 use std::fs::File;
 use std::path::PathBuf;
 
 use app::App;
 use clap::{AppSettings, Clap};
 use cursive::align::{HAlign, VAlign};
-use cursive::event::EventResult;
-use cursive::traits::*;
-use cursive::views::{Dialog, DummyView, LinearLayout, OnEventView, SelectView, TextView, CircularFocus, EditView};
+use cursive::traits::{Nameable, Resizable, Scrollable};
+use cursive::views::{Dialog, DummyView, EditView, LinearLayout, SelectView, TextView};
 use cursive::{
-    direction::Orientation,
-    theme::{BaseColor, Color, ColorStyle},
+    theme::{ColorStyle, PaletteColor},
     Cursive,
 };
 use eyre::Report;
 use fehler::throws;
 use repo::Repo;
 use simplelog::*;
-use std::rc::Rc;
 
 mod app;
 mod repo;
@@ -80,9 +76,9 @@ fn main() {
     let mut select = SelectView::new()
         // Center the text horizontally
         .h_align(HAlign::Left)
-        .v_align(VAlign::Top);
-    // Use keyboard to jump to the pressed letters
-    // .autojump();
+        .v_align(VAlign::Top)
+        // Use keyboard to jump to the pressed letters
+        .autojump();
 
     // add authors
     select.add_all_str(app.all_authors());
@@ -91,17 +87,6 @@ fn main() {
     // Sets the callback for when "Enter" is pressed.
     select.set_on_submit(show_co_authors);
 
-    // Let's override the `j` and `k` keys for navigation
-    let select = OnEventView::new(select)
-        .on_pre_event_inner('k', |s, _| {
-            s.select_up(1);
-            Some(EventResult::Consumed(None))
-        })
-        .on_pre_event_inner('j', |s, _| {
-            s.select_down(1);
-            Some(EventResult::Consumed(None))
-        });
-
     let mut siv = cursive::default();
 
     siv.set_global_callback('Q', Cursive::quit);
@@ -109,7 +94,7 @@ fn main() {
 
     // Let's add a ResizedView to keep the list at a reasonable size
     // (it can scroll anyway).
-    siv.add_layer(
+    siv.add_fullscreen_layer(
         LinearLayout::horizontal()
             .child(
                 Dialog::around(
@@ -117,7 +102,7 @@ fn main() {
                         .with_name("committers")
                         .scrollable()
                         .full_height()
-                        .fixed_width(15),
+                        .fixed_width(usize::from(app.author_widget_width())),
                 )
                 .title("Committer"),
             )
@@ -139,12 +124,12 @@ fn show_co_authors(siv: &mut Cursive, committer: &str) {
 
 fn show_range_dialog(siv: &mut Cursive) {
     fn ok(siv: &mut Cursive) {
-        let range_start = siv.call_on_name("range_start", |view: &mut EditView| {
-            view.get_content()
-        }).unwrap();
-        let range_end = siv.call_on_name("range_end", |view: &mut EditView| {
-            view.get_content()
-        }).unwrap();
+        let range_start = siv
+            .call_on_name("range_start", |view: &mut EditView| view.get_content())
+            .unwrap();
+        let range_end = siv
+            .call_on_name("range_end", |view: &mut EditView| view.get_content())
+            .unwrap();
         let range = format!("{}..{}", range_start, range_end);
 
         let mut app = siv.find_name::<App>("co-authors").unwrap();
@@ -155,22 +140,20 @@ fn show_range_dialog(siv: &mut Cursive) {
 
     siv.add_layer(
         Dialog::around(
-        LinearLayout::horizontal()
-            .child(
-                EditView::new()
-                    .with_name("range_start")
-                    .fixed_width(20),
-            )
-            .child(TextView::new(".."))
-            .child(
-                EditView::new()
-                    .with_name("range_end")
-                    .fixed_width(20),
-            ),
+            LinearLayout::horizontal()
+                .child(EditView::new().with_name("range_start").fixed_width(20))
+                .child(TextView::new(".."))
+                .child(EditView::new().with_name("range_end").fixed_width(20)),
         )
-            .title("Enter commit range")
-            .button("Ok", ok)
+        .title("Enter commit range")
+        .button("Ok", ok),
     );
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum BarPlacement {
+    Left,
+    Right,
 }
 
 impl cursive::view::View for App {
@@ -186,6 +169,9 @@ impl cursive::view::View for App {
             self.co_author_tuples(&author),
             None,
             ColorStyle::title_secondary(),
+            ColorStyle::new(PaletteColor::Primary, PaletteColor::HighlightInactive),
+            Some(ColorStyle::primary()),
+            BarPlacement::Right,
             printer,
         );
 
@@ -194,10 +180,23 @@ impl cursive::view::View for App {
             self.navigator_tuples(&author),
             Some(max_co_author_count),
             ColorStyle::title_primary(),
+            ColorStyle::new(PaletteColor::Primary, PaletteColor::Highlight),
+            Some(ColorStyle::primary()),
+            BarPlacement::Left,
             printer,
         );
     }
 }
+
+const FULL: &str = "█";
+const SEVEN_EIGHTHS: &str = "▇";
+const THREE_QUARTERS: &str = "▆";
+const FIVE_EIGHTHS: &str = "▅";
+const HALF: &str = "▄";
+const THREE_EIGHTHS: &str = "▃";
+const ONE_QUARTER: &str = "▂";
+const ONE_EIGHTH: &str = "▁";
+const EMPTY: &str = " ";
 
 impl App {
     fn draw_author_counts(
@@ -206,6 +205,9 @@ impl App {
         author_counts: Vec<(&str, u64)>,
         max_count: Option<u64>,
         color: ColorStyle,
+        value_color: ColorStyle,
+        text_color: Option<ColorStyle>,
+        bar_placement: BarPlacement,
         printer: &cursive::Printer,
     ) -> u64 {
         let max_count = max_count
@@ -223,24 +225,77 @@ impl App {
             printer.size, printer.offset, printer.output_size, printer.content_offset,
         );
 
+        let mut bar_gap = 2;
+
+        let width_per_author =
+            usize::from(printer.size.x - printer.offset.x) / author_counts.len().max(1);
+
+        let mut bar_width = width_per_author.saturating_sub(usize::from(bar_gap)).max(1);
+        if bar_width % 2 != 0 {
+            bar_width += 1;
+            bar_gap -= 1;
+        }
+
+        let max_y = printer.size.y - printer.offset.y;
+
+        let max_top_y = printer.size.y.saturating_sub(1) as u64;
+
         for (index, (co_author, commits)) in author_counts.into_iter().enumerate() {
-            let top =
-                usize::try_from((printer.size.y - printer.offset.y) as u64 * commits / max_count)
-                    .unwrap();
+            let top = (max_top_y * commits / max_count) as usize;
+
+            let scaled = 8 * max_top_y * commits / max_count;
+            let last_block = scaled - (top as u64 * 8);
+
             info!(
-                "index = {}, top = {}, commits = {}, co_autor = {}",
-                index, top, commits, co_author
+                "index = {}, top = {}, last_block = {}, commits = {}, co_autor = {}",
+                index, top, last_block, commits, co_author
             );
 
-            let bar_width = 3;
-            let bar_gap = 2;
+            let y = max_y.saturating_sub(top);
+            let range = match bar_placement {
+                BarPlacement::Left => 1..=(bar_width / 2),
+                BarPlacement::Right => ((bar_width / 2) + 1)..=bar_width,
+            };
 
             printer.with_color(color, |p| {
-                for x in 1..=bar_width {
+                for x in range {
                     let x = index * (bar_width + bar_gap) + bar_gap + (x - 1);
-                    p.print_vline((x, printer.size.y - top), top, tui::symbols::bar::FULL)
+                    if top > 0 {
+                        p.print_vline((x, y + 1), top - 1, FULL);
+                        let symbol = match last_block {
+                            0 => EMPTY,
+                            1 => ONE_EIGHTH,
+                            2 => ONE_QUARTER,
+                            3 => THREE_EIGHTHS,
+                            4 => HALF,
+                            5 => FIVE_EIGHTHS,
+                            6 => THREE_QUARTERS,
+                            7 => SEVEN_EIGHTHS,
+                            _ => FULL,
+                        };
+                        p.print((x, y), symbol);
+                    }
                 }
-            })
+            });
+
+            let x = index * (bar_width + bar_gap) + bar_gap;
+            info!(
+                "index = {}, x = {}, co_autor = {} commits = {}",
+                index, x, co_author, commits
+            );
+            printer.with_color(value_color, |p| {
+                let text_y = max_y;
+                let text_x = match bar_placement {
+                    BarPlacement::Left => x,
+                    BarPlacement::Right => x + (bar_width / 2),
+                };
+                p.print((text_x, text_y), &format!("{:^1$}", commits, bar_width / 2));
+            });
+            if let Some(text_color) = text_color {
+                printer.with_color(text_color, |p| {
+                    p.print((x, max_y + 1), &format!("{:^1$.1$}", co_author, bar_width));
+                })
+            }
         }
 
         max_count
