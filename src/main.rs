@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use app::App;
 use clap::{AppSettings, Clap};
 use cursive::align::{HAlign, VAlign};
+use cursive::event::Key;
 use cursive::traits::{Nameable, Resizable, Scrollable};
 use cursive::views::{Dialog, DummyView, EditView, LinearLayout, SelectView, TextView};
 use cursive::{
@@ -90,7 +91,7 @@ fn main() {
     let mut siv = cursive::default();
 
     siv.set_global_callback('Q', Cursive::quit);
-    siv.set_global_callback('R', show_range_dialog);
+    siv.set_global_callback(Key::F3, show_range_dialog);
 
     // Let's add a ResizedView to keep the list at a reasonable size
     // (it can scroll anyway).
