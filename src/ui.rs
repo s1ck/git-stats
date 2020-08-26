@@ -1,301 +1,223 @@
-use itertools::Itertools;
-use std::sync::mpsc;
-use std::{io, thread};
-use str_utils::StartsWithIgnoreAsciiCase;
-use termion::input::TermRead;
-use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
-use tui::backend::{Backend, TermionBackend};
-use tui::layout::{Alignment, Constraint, Direction, Layout};
-use tui::style::{Color, Modifier, Style};
-use tui::widgets::{
-    Block, BorderType, Borders, Clear, List, ListItem, Paragraph, StackableBarChart,
-    ValuePlacement, Wrap,
-};
-use tui::{Frame, Terminal};
-use unicode_width::UnicodeWidthStr;
-
 use crate::{app::App, repo::Repo};
 
+use cursive::align::{HAlign, VAlign};
+use cursive::event::Key;
+use cursive::traits::{Nameable, Resizable, Scrollable};
+use cursive::views::{Dialog, DummyView, EditView, LinearLayout, SelectView, TextView};
+use cursive::{
+    theme::{ColorStyle, PaletteColor},
+    view::View,
+    Cursive,
+};
+
 pub fn render_coauthors(repo: Repo, range: Option<String>) -> eyre::Result<()> {
-    let mut app = App::new(repo, range);
+    let app = App::new(repo, range);
 
-    let events = Events::with_config(Config::default());
+    let mut select = SelectView::new()
+        // Center the text horizontally
+        .h_align(HAlign::Left)
+        .v_align(VAlign::Top)
+        // Use keyboard to jump to the pressed letters
+        .autojump();
 
-    let stdout = io::stdout().into_raw_mode()?;
-    let stdout = MouseTerminal::from(stdout);
-    let stdout = AlternateScreen::from(stdout);
-    let backend = TermionBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    // add authors
+    select.add_all_str(app.all_authors());
+    select.sort();
 
-    loop {
-        terminal.draw(|frame| draw(frame, &mut app))?;
+    // Sets the callback for when "Enter" is pressed.
+    select.set_on_submit(show_co_authors);
 
-        match events.next()? {
-            Event::Input(key) => match key {
-                Key::Char('\n') => app.on_enter(),
-                Key::Char(c) => app.on_key(c),
-                Key::Up => app.on_up(),
-                Key::Down => app.on_down(),
-                Key::Esc => app.on_escape(),
-                Key::Backspace => app.on_backspace(),
-                _ => (),
-            },
-        }
+    let mut siv = cursive::default();
 
-        if app.should_quit() {
-            break;
-        }
-    }
+    siv.set_global_callback('Q', Cursive::quit);
+    siv.set_global_callback(Key::F3, show_range_dialog);
+
+    // Let's add a ResizedView to keep the list at a reasonable size
+    // (it can scroll anyway).
+    siv.add_fullscreen_layer(
+        LinearLayout::horizontal()
+            .child(
+                Dialog::around(
+                    select
+                        .with_name("committers")
+                        .scrollable()
+                        .full_height()
+                        .fixed_width(usize::from(app.author_widget_width())),
+                )
+                .title("Committer"),
+            )
+            .child(DummyView.fixed_width(1))
+            .child(
+                Dialog::around(app.with_name("co-authors").full_width()) // TextView::new("foobar").with_name("co-authors")
+                    .title("Co-authors"),
+            )
+            .full_screen(),
+    );
+
+    siv.run();
+
     Ok(())
 }
 
-fn draw<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
-    let bar_gap = 3_u16;
-    let string_cache = app.repo.string_cache();
+fn show_co_authors(siv: &mut Cursive, committer: &str) {
+    let mut app = siv.find_name::<App>("co-authors").unwrap();
+    app.set_current_author(committer);
+}
 
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(
-            [
-                Constraint::Length(app.author_widget_width()),
-                Constraint::Min(0),
-            ]
-            .as_ref(),
+fn show_range_dialog(siv: &mut Cursive) {
+    fn ok(siv: &mut Cursive) {
+        let range_start = siv
+            .call_on_name("range_start", |view: &mut EditView| view.get_content())
+            .unwrap();
+        let range_end = siv
+            .call_on_name("range_end", |view: &mut EditView| view.get_content())
+            .unwrap();
+        let range = format!("{}..{}", range_start, range_end);
+
+        let mut app = siv.find_name::<App>("co-authors").unwrap();
+        app.set_range_filter(range.as_str());
+        app.update_counts_from_repo();
+        siv.pop_layer();
+    }
+
+    siv.add_layer(
+        Dialog::around(
+            LinearLayout::horizontal()
+                .child(EditView::new().with_name("range_start").fixed_width(20))
+                .child(TextView::new(".."))
+                .child(EditView::new().with_name("range_end").fixed_width(20)),
         )
-        .split(frame.size());
+        .title("Enter commit range")
+        .button("Ok", ok),
+    );
+}
 
-    let filtered_authors = app
-        .authors
-        .items
-        .iter()
-        .filter(|s| {
-            string_cache
-                .get(**s)
-                .filter(|s| s.starts_with_ignore_ascii_case(&app.search_filter()))
-                .is_some()
-        })
-        .copied()
-        .collect_vec();
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum BarPlacement {
+    Left,
+    Right,
+}
 
-    app.authors.filter_down(filtered_authors);
+const FULL: &str = "█";
+const SEVEN_EIGHTHS: &str = "▇";
+const THREE_QUARTERS: &str = "▆";
+const FIVE_EIGHTHS: &str = "▅";
+const HALF: &str = "▄";
+const THREE_EIGHTHS: &str = "▃";
+const ONE_QUARTER: &str = "▂";
+const ONE_EIGHTH: &str = "▁";
+const EMPTY: &str = " ";
 
-    let authors = app
-        .authors
-        .current_items
-        .iter()
-        .flat_map(|author| string_cache.get(*author))
-        .map(ListItem::new)
-        .collect_vec();
+impl App {
+    fn draw_author_counts(
+        &self,
+        author_counts: Vec<(&str, u64)>,
+        max_count: Option<u64>,
+        color: ColorStyle,
+        value_color: ColorStyle,
+        text_color: Option<ColorStyle>,
+        bar_placement: BarPlacement,
+        printer: &cursive::Printer,
+    ) -> u64 {
+        let max_count = max_count
+            .or_else(|| author_counts.iter().map(|(_, commits)| *commits).max())
+            .unwrap_or_default()
+            .max(1);
 
-    let list = List::new(authors)
-        .block(Block::default().title("Authors").borders(Borders::ALL))
-        .style(Style::default().fg(Color::Green))
-        .highlight_style(Style::default().add_modifier(Modifier::ITALIC))
-        .highlight_symbol(">>");
+        let mut bar_gap = 2;
 
-    let list_area = if !app.search_filter().is_empty() {
-        let list_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0), Constraint::Max(3)].as_ref())
-            .split(chunks[0]);
+        let width_per_author =
+            usize::from(printer.size.x - printer.offset.x) / author_counts.len().max(1);
 
-        let filter = Paragraph::new(app.search_filter())
-            .block(Block::default().title("Filter").borders(Borders::ALL))
-            .style(
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .alignment(Alignment::Center)
-            .wrap(Wrap { trim: true });
-
-        frame.render_widget(filter, list_chunks[1]);
-        list_chunks[0]
-    } else {
-        chunks[0]
-    };
-
-    frame.render_stateful_widget(list, list_area, &mut app.authors.state);
-
-    let author = app.authors.current();
-    let author = match author {
-        Some(author) => author,
-        None => return,
-    };
-
-    let co_authors_area = chunks[1];
-    let navigators_area = Layout::default()
-        .margin(1)
-        .constraints([Constraint::Percentage(100)].as_ref())
-        .split(co_authors_area)[0];
-
-    let co_author_tuples = app.co_author_tuples(author);
-    let max_co_author_commits = co_author_tuples
-        .iter()
-        .map(|ca| ca.1)
-        .max()
-        .unwrap_or_default();
-
-    // need to use the navigators_area as base for the bar width
-    // as the co_authors_area also contains the block
-    let width_per_co_author = usize::from(navigators_area.width) / co_author_tuples.len().max(1);
-    let bar_width_co_author = width_per_co_author
-        .saturating_sub(usize::from(bar_gap))
-        .max(1);
-    let co_authors_barchart = StackableBarChart::default()
-        .block(Block::default().title("Co-Authors").borders(Borders::ALL))
-        .data(&co_author_tuples[..])
-        .bar_gap(bar_gap)
-        .bar_width(bar_width_co_author as u16)
-        .bar_style(Style::default().fg(Color::Red))
-        .value_style(Style::default().fg(Color::Black).bg(Color::Red))
-        .value_placement(ValuePlacement::Top);
-
-    frame.render_widget(co_authors_barchart, co_authors_area);
-
-    let navigator_tuples = app.navigator_tuples(author);
-    let width_per_navigator = usize::from(navigators_area.width) / navigator_tuples.len().max(1);
-    let bar_width_navigator = width_per_navigator
-        .saturating_sub(usize::from(bar_gap))
-        .max(1);
-    let navigators_barchart = StackableBarChart::default()
-        .data(&navigator_tuples[..])
-        .max(max_co_author_commits)
-        .bar_gap(bar_gap)
-        .bar_width(bar_width_navigator as u16)
-        .bar_style(Style::default().fg(Color::Yellow))
-        .value_style(Style::default().fg(Color::Black).bg(Color::Yellow));
-
-    frame.render_widget(navigators_barchart, navigators_area);
-
-    if let Some(range_filter) = app.range_filter_popup() {
-        let popup = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(
-                [
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(50),
-                    Constraint::Percentage(25),
-                ]
-                .as_ref(),
-            )
-            .split(frame.size())[1];
-
-        let popup = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(
-                [
-                    Constraint::Percentage(45),
-                    Constraint::Percentage(10),
-                    Constraint::Percentage(45),
-                ]
-                .as_ref(),
-            )
-            .split(popup)[1];
-
-        let filter = Block::default()
-            .title("Filter for Commit range")
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(Color::LightGreen));
-
-        frame.render_widget(Clear, popup);
-        frame.render_widget(filter, popup);
-
-        let filter = Paragraph::new(range_filter.filter.as_str())
-            .style(
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::LightGreen)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .alignment(Alignment::Left)
-            .wrap(Wrap { trim: true });
-
-        let filter_text = Layout::default()
-            .direction(Direction::Vertical)
-            .horizontal_margin(2)
-            .constraints(
-                [
-                    Constraint::Max(popup.height.saturating_sub(1) / 2),
-                    Constraint::Length(1),
-                    Constraint::Max(popup.height.saturating_sub(1) / 2),
-                ]
-                .as_ref(),
-            )
-            .split(popup);
-        let error_text = filter_text[2];
-        let filter_text = filter_text[1];
-
-        frame.render_widget(filter, filter_text);
-        frame.set_cursor(
-            // Put cursor past the end of the input text
-            filter_text.x + range_filter.filter.width() as u16,
-            // Move one line down, from the border to the input line
-            filter_text.y,
-        );
-
-        if !range_filter.error.is_empty() {
-            let error = Paragraph::new(range_filter.error.as_str())
-                .block(
-                    Block::default()
-                        .border_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
-                        .border_type(BorderType::Double),
-                )
-                .style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
-                .alignment(Alignment::Center)
-                .wrap(Wrap { trim: false });
-
-            frame.render_widget(error, error_text);
+        let mut bar_width = width_per_author.saturating_sub(usize::from(bar_gap)).max(1);
+        if bar_width % 2 != 0 {
+            bar_width += 1;
+            bar_gap -= 1;
         }
-    }
-}
 
-pub enum Event<I> {
-    Input(I),
-}
+        let maxest_y = printer.size.y - printer.offset.y;
+        let max_y = maxest_y.saturating_sub(1);
+        let max_top_y = maxest_y as u64;
 
-pub struct Events {
-    rx: mpsc::Receiver<Event<Key>>,
-}
+        for (index, (co_author, commits)) in author_counts.into_iter().enumerate() {
+            let top = (max_top_y * commits / max_count) as usize;
 
-#[derive(Debug, Clone, Copy)]
-pub struct Config {
-    pub exit_key: Key,
-}
+            let scaled = 8 * max_top_y * commits / max_count;
+            let last_block = scaled - (top as u64 * 8);
 
-impl Default for Config {
-    fn default() -> Config {
-        Config {
-            exit_key: Key::Char('Q'),
-        }
-    }
-}
+            let y = max_y.saturating_sub(top);
+            let range = match bar_placement {
+                BarPlacement::Left => 1..=(bar_width / 2),
+                BarPlacement::Right => ((bar_width / 2) + 1)..=bar_width,
+            };
 
-impl Events {
-    pub fn with_config(config: Config) -> Events {
-        let (tx, rx) = mpsc::channel();
-        let tx = tx.clone();
-
-        thread::spawn(move || {
-            let stdin = io::stdin();
-            for evt in stdin.keys() {
-                if let Ok(key) = evt {
-                    if let Err(err) = tx.send(Event::Input(key)) {
-                        eprintln!("{}", err);
-                        return;
-                    }
-                    if key == config.exit_key {
-                        return;
+            printer.with_color(color, |p| {
+                for x in range {
+                    let x = index * (bar_width + bar_gap) + bar_gap + (x - 1);
+                    if top > 0 {
+                        p.print_vline((x, y + 1), top - 1, FULL);
+                        let symbol = match last_block {
+                            0 => EMPTY,
+                            1 => ONE_EIGHTH,
+                            2 => ONE_QUARTER,
+                            3 => THREE_EIGHTHS,
+                            4 => HALF,
+                            5 => FIVE_EIGHTHS,
+                            6 => THREE_QUARTERS,
+                            7 => SEVEN_EIGHTHS,
+                            _ => FULL,
+                        };
+                        p.print((x, y), symbol);
                     }
                 }
+            });
+
+            let x = index * (bar_width + bar_gap) + bar_gap;
+            printer.with_color(value_color, |p| {
+                let text_y = max_y;
+                let text_x = match bar_placement {
+                    BarPlacement::Left => x,
+                    BarPlacement::Right => x + (bar_width / 2),
+                };
+                p.print((text_x, text_y), &format!("{:^1$}", commits, bar_width / 2));
+            });
+            if let Some(text_color) = text_color {
+                printer.with_color(text_color, |p| {
+                    p.print((x, maxest_y), &format!("{:^1$.1$}", co_author, bar_width));
+                })
             }
-        });
+        }
 
-        Events { rx }
+        max_count
     }
+}
 
-    pub fn next(&self) -> Result<Event<Key>, mpsc::RecvError> {
-        self.rx.recv()
+impl View for App {
+    fn draw(&self, printer: &cursive::Printer) {
+        let author = self.current_author();
+        let author = match author {
+            Some(author) => author,
+            None => return,
+        };
+
+        let max_co_author_count = self.draw_author_counts(
+            self.co_author_tuples(&author),
+            None,
+            ColorStyle::title_secondary(),
+            ColorStyle::new(PaletteColor::Primary, PaletteColor::HighlightInactive),
+            Some(ColorStyle::primary()),
+            BarPlacement::Right,
+            printer,
+        );
+
+        self.draw_author_counts(
+            self.navigator_tuples(&author),
+            Some(max_co_author_count),
+            ColorStyle::title_primary(),
+            ColorStyle::new(PaletteColor::Primary, PaletteColor::Highlight),
+            Some(ColorStyle::primary()),
+            BarPlacement::Left,
+            printer,
+        );
     }
 }
