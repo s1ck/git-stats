@@ -190,9 +190,9 @@ enum Error {
     NotInGitRepository,
 }
 
-#[derive(derive_more::Display, Debug)]
+#[derive(thiserror::Error, Debug)]
 enum Suggestions {
-    #[display(fmt = "Try running {} from within a Git repository.", APPLICATION)]
+    #[error("Try running {} from within a Git repository.", APPLICATION)]
     NotInGitRepository,
 }
 
