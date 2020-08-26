@@ -2,3 +2,9 @@ target
 
 .idea/*
 *.iml
+
+.vscode
+*.code-workspace
+
+.cargoinstalled
+git-stats.log
