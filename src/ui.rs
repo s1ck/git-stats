@@ -1,14 +1,15 @@
-use crate::{app::App, repo::Repo};
-
-use cursive::align::{HAlign, VAlign};
-use cursive::event::Key;
-use cursive::traits::{Nameable, Resizable, Scrollable};
-use cursive::views::{Dialog, DummyView, EditView, LinearLayout, SelectView, TextView};
 use cursive::{
+    Cursive,
     theme::{ColorStyle, PaletteColor},
     view::View,
-    Cursive,
 };
+use cursive::align::{HAlign, VAlign};
+use cursive::event::Key;
+use cursive::menu::MenuTree;
+use cursive::traits::{Nameable, Resizable, Scrollable};
+use cursive::views::{Dialog, DummyView, EditView, LinearLayout, SelectView, TextView};
+
+use crate::{app::App, repo::Repo};
 
 pub fn render_coauthors(repo: Repo, range: Option<String>) -> eyre::Result<()> {
     let app = App::new(repo, range);
@@ -29,8 +30,18 @@ pub fn render_coauthors(repo: Repo, range: Option<String>) -> eyre::Result<()> {
 
     let mut siv = cursive::default();
 
-    siv.set_global_callback('Q', Cursive::quit);
-    siv.set_global_callback(Key::F3, show_range_dialog);
+    siv.add_global_callback(Key::Esc, |s| s.select_menubar());
+
+    siv.menubar()
+        .add_subtree(
+            "Filter",
+            MenuTree::new()
+                .leaf("Commit range", show_range_dialog),
+        )
+        .add_delimiter()
+        .add_leaf("Quit", Cursive::quit);
+
+    siv.set_autohide_menu(false);
 
     // Let's add a ResizedView to keep the list at a reasonable size
     // (it can scroll anyway).
@@ -135,7 +146,7 @@ impl App {
             bar_gap -= 1;
         }
 
-        let maxest_y = printer.size.y - printer.offset.y;
+        let maxest_y = printer.size.y - printer.offset.y + 1;
         let max_y = maxest_y.saturating_sub(1);
         let max_top_y = maxest_y as u64;
 
@@ -204,7 +215,7 @@ impl View for App {
             self.co_author_tuples(&author),
             None,
             ColorStyle::title_secondary(),
-            ColorStyle::new(PaletteColor::Primary, PaletteColor::HighlightInactive),
+            ColorStyle::new(PaletteColor::Primary, PaletteColor::TitleSecondary),
             Some(ColorStyle::primary()),
             BarPlacement::Right,
             printer,
@@ -214,7 +225,7 @@ impl View for App {
             self.navigator_tuples(&author),
             Some(max_co_author_count),
             ColorStyle::title_primary(),
-            ColorStyle::new(PaletteColor::Primary, PaletteColor::Highlight),
+            ColorStyle::new(PaletteColor::Primary, PaletteColor::TitlePrimary),
             Some(ColorStyle::primary()),
             BarPlacement::Left,
             printer,
