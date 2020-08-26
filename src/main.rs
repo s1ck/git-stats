@@ -237,20 +237,15 @@ impl App {
             bar_gap -= 1;
         }
 
-        let max_y = printer.size.y - printer.offset.y;
-
-        let max_top_y = printer.size.y.saturating_sub(1) as u64;
+        let maxest_y = printer.size.y - printer.offset.y;
+        let max_y = maxest_y.saturating_sub(1);
+        let max_top_y = maxest_y as u64;
 
         for (index, (co_author, commits)) in author_counts.into_iter().enumerate() {
             let top = (max_top_y * commits / max_count) as usize;
 
             let scaled = 8 * max_top_y * commits / max_count;
             let last_block = scaled - (top as u64 * 8);
-
-            info!(
-                "index = {}, top = {}, last_block = {}, commits = {}, co_autor = {}",
-                index, top, last_block, commits, co_author
-            );
 
             let y = max_y.saturating_sub(top);
             let range = match bar_placement {
@@ -280,10 +275,6 @@ impl App {
             });
 
             let x = index * (bar_width + bar_gap) + bar_gap;
-            info!(
-                "index = {}, x = {}, co_autor = {} commits = {}",
-                index, x, co_author, commits
-            );
             printer.with_color(value_color, |p| {
                 let text_y = max_y;
                 let text_x = match bar_placement {
@@ -294,7 +285,7 @@ impl App {
             });
             if let Some(text_color) = text_color {
                 printer.with_color(text_color, |p| {
-                    p.print((x, max_y + 1), &format!("{:^1$.1$}", co_author, bar_width));
+                    p.print((x, maxest_y), &format!("{:^1$.1$}", co_author, bar_width));
                 })
             }
         }
