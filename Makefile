@@ -51,7 +51,7 @@ $(DESTDIR)$(PREFIX)/bin/$(APP): target/release/$(APP)
 > install -m755 -- target/release/$(APP) "$(DESTDIR)$(PREFIX)/bin/"
 
 .cargoinstalled:
-> @if ! command command -v cargo 2> /dev/null
+> @if ! command -v cargo 2> /dev/null
 > @then
 >   @echo "Cargo is not installed. Please visit 'https://rustup.rs/' and follow their instructions, or try to run 'curl --proto \"=https\" --tlsv1.2 -sSf https://sh.rustup.rs | sh'"
 >   @exit 1
