@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::{
     author_counts::{AuthorCounts, PairingCounts},
-    repo::Repo,
+    repo::{Repo, HAN_SOLO},
     stringcache::StringCache,
 };
 use clap::{AppSettings, Clap};

@@ -1,8 +1,9 @@
-use crate::{AuthorCounts, PairingCounts, Repo, Result, StringCache};
+use crate::{AuthorCounts, PairingCounts, Repo, Result, StringCache, HAN_SOLO};
 use cursive::{
     theme::{ColorStyle, PaletteColor},
     View,
 };
+use itertools::Itertools;
 use std::rc::Rc;
 
 pub(crate) struct AuthorCountsView {
@@ -84,7 +85,6 @@ impl View for AuthorCountsView {
         let max_y = max_view_y.saturating_sub(1) as u32;
 
         let max_count = counts.max_value().max(1);
-        let count_iter = counts.resolving_iter(self.string_cache());
 
         // colors
         let driver_bar_color = ColorStyle::title_primary();
@@ -150,7 +150,10 @@ impl View for AuthorCountsView {
             x
         };
 
-        for (index, (co_author, commits)) in count_iter.into_iter().enumerate() {
+        let mut counts = counts.resolving_iter(self.string_cache()).collect_vec();
+        counts.sort_by_key(|(k, _)| if *k == HAN_SOLO { "~" } else { *k });
+
+        for (index, (co_author, commits)) in counts.into_iter().enumerate() {
             let name_pos = if commits.as_driver == 0 {
                 draw_author_bar_inner(
                     index,
