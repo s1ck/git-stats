@@ -1,16 +1,9 @@
-use std::collections::BTreeMap;
-use std::collections::HashMap;
-use std::{borrow::Cow, path::PathBuf};
-
+use crate::{AuthorCounts, Result, StringCache};
 use color_eyre::Section;
-use eyre::Result;
-use git2::{Repository, Revwalk};
+use git2::{Commit, Repository};
 use itertools::Itertools;
 use once_cell::sync::Lazy;
-
-use crate::stringcache::StringCache;
-
-pub type AuthorCounts = BTreeMap<usize, BTreeMap<usize, u32>>;
+use std::{borrow::Cow, collections::HashMap, path::PathBuf};
 
 pub const HAN_SOLO: &str = "Han Solo";
 
@@ -21,14 +14,14 @@ pub struct Repo {
 }
 
 impl Repo {
-    pub fn open(path: Option<PathBuf>, replacements: Vec<(String, String)>) -> Result<Self> {
+    pub(crate) fn open(path: Option<PathBuf>, replacements: Vec<(String, String)>) -> Result<Self> {
         let repository = path
             .map_or_else(Repository::open_from_env, Repository::discover)
             .map_err(|_| Error::NotInGitRepository)
             .suggestion(Suggestions::NotInGitRepository)?;
 
         let mut string_cache = StringCache::new();
-        string_cache.intern("Han Solo");
+        string_cache.intern(HAN_SOLO);
 
         Ok(Repo {
             repository,
@@ -37,98 +30,75 @@ impl Repo {
         })
     }
 
-    pub fn string_cache(&self) -> &StringCache {
+    pub(crate) fn string_cache(&self) -> &StringCache {
         &self.string_cache
     }
 
-    pub fn extract_coauthors(
-        &mut self,
-        range: Option<String>,
-    ) -> Result<(AuthorCounts, AuthorCounts)> {
+    pub(crate) fn extract_coauthors(&mut self, range: Option<String>) -> Result<AuthorCounts> {
         let repository = &self.repository;
         let replacements = &self.replacements;
         let string_cache = &mut self.string_cache;
 
-        let mut revwalk: Revwalk = repository.revwalk()?;
+        let mut revwalk = repository.revwalk()?;
         match range {
             Some(range) => revwalk.push_range(range.as_str())?,
             None => revwalk.push_head()?,
         };
 
-        let mut driver_counts: AuthorCounts = BTreeMap::new();
-
-        revwalk
-            .filter_map(|oid| {
-                let oid = oid.ok()?;
-                repository.find_commit(oid).ok()
-            })
-            // TODO: should be an argument option
+        let author_counts = revwalk
+            .filter_map(|oid| repository.find_commit(oid.ok()?).ok())
             // Filter merge commits
+            // TODO: This should be an argument option
             .filter(|commit| commit.parent_count() == 1)
-            // Extract co-author
-            .for_each(|commit| {
-                let author = commit.author();
-                let author_name = author.name().unwrap_or_default();
-                let author_name = replacements.normalize_author_name(author_name);
-                let author_name = string_cache.intern(author_name);
-
-                let commit_message = commit.message().unwrap_or_default();
-                let navigators = Self::get_navigators(commit_message);
-
-                let inner_map = driver_counts.entry(author_name).or_default();
-
-                if navigators.is_empty() {
-                    // TODO: move outside
-                    let han_solo = string_cache.intern(HAN_SOLO);
-                    let single_counts = inner_map.entry(han_solo).or_insert(0_u32);
-                    *single_counts += 1;
-                }
-
-                for navigator in navigators {
-                    let navigator = replacements.normalize_author_name(navigator);
-                    let navigator = string_cache.intern(navigator);
-                    let pair_counts = inner_map.entry(navigator).or_insert(0_u32);
-                    *pair_counts += 1;
-                }
+            .fold(AuthorCounts::default(), |counts, commit| {
+                Self::find_and_add_navigators(replacements, string_cache, counts, commit)
             });
 
-        let groups = driver_counts
-            .iter()
-            .flat_map(|(driver, navigators)| {
-                navigators.iter().flat_map(move |(navigator, count)| {
-                    vec![
-                        (*driver, (*navigator, count)),
-                        (*navigator, (*driver, count)),
-                    ]
-                })
-            })
-            .into_group_map();
-
-        let pair_counts = groups
-            .into_iter()
-            .map(|(key, co_committers)| {
-                let co_committers = co_committers
-                    .into_iter()
-                    .into_group_map()
-                    .into_iter()
-                    .map(|(co_committer, counts)| {
-                        let sum = counts.into_iter().sum::<u32>();
-                        (co_committer, sum)
-                    })
-                    .collect::<BTreeMap<_, _>>();
-                (key, co_committers)
-            })
-            .collect::<BTreeMap<_, _>>();
-
-        Ok((driver_counts, pair_counts))
+        Ok(author_counts)
     }
 
-    fn get_navigators(commit_message: &str) -> Vec<&str> {
+    fn find_and_add_navigators(
+        replacements: &Replacements,
+        string_cache: &mut StringCache,
+        mut author_counts: AuthorCounts,
+        commit: Commit,
+    ) -> AuthorCounts {
+        Self::try_find_and_add_navigators(replacements, string_cache, &mut author_counts, commit)
+            .unwrap_or_default();
+        author_counts
+    }
+
+    fn try_find_and_add_navigators(
+        replacements: &Replacements,
+        string_cache: &mut StringCache,
+        author_counts: &mut AuthorCounts,
+        commit: Commit,
+    ) -> Option<()> {
+        let commit_message = commit.message()?;
+        let author_name = commit.author();
+        let author_name = author_name.name()?;
+        let author_name = Self::author_id(replacements, string_cache, author_name);
+
+        let navigators = Self::get_navigators(commit_message);
+        for navigator in navigators {
+            let navigator = Self::author_id(replacements, string_cache, navigator);
+            author_counts.add_pair(author_name, navigator);
+        }
+
+        Some(())
+    }
+
+    fn get_navigators(commit_message: &str) -> impl Iterator<Item = &str> {
         commit_message
             .lines()
             .filter_map(|line| co_authors::get_co_author(line))
             .map(|coauthor| coauthor.name)
-            .collect()
+            .pad_using(1, |_| HAN_SOLO)
+    }
+
+    fn author_id(replacements: &Replacements, string_cache: &mut StringCache, name: &str) -> usize {
+        let name = replacements.normalize_author_name(name);
+        string_cache.intern(name)
     }
 }
 

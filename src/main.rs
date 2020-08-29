@@ -3,10 +3,15 @@ extern crate maplit;
 
 use std::path::PathBuf;
 
+use crate::{
+    author_counts::{AuthorCounts, PairingCounts},
+    repo::Repo,
+    stringcache::StringCache,
+};
 use clap::{AppSettings, Clap};
-use repo::Repo;
+use eyre::Result;
 
-mod app;
+mod author_counts;
 mod repo;
 mod stringcache;
 mod ui;

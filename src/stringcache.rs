@@ -7,13 +7,13 @@ pub struct StringCache {
 }
 
 impl StringCache {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         StringCache {
             index_set: IndexSet::default(),
         }
     }
 
-    pub fn intern<T>(&mut self, k: T) -> usize
+    pub(crate) fn intern<T>(&mut self, k: T) -> usize
     where
         T: AsRef<str> + Into<String>,
     {
@@ -23,16 +23,8 @@ impl StringCache {
         }
     }
 
-    pub fn get(&self, idx: usize) -> Option<&str> {
+    fn get(&self, idx: usize) -> Option<&str> {
         self.index_set.get_index(idx).map(|s| s.as_str())
-    }
-
-    pub fn lookup(&self, key: &str) -> Option<usize> {
-        self.index_set.get_index_of(key)
-    }
-
-    pub fn values(&self) -> impl Iterator<Item = &str> {
-        self.index_set.iter().map(|s| s.as_str())
     }
 }
 
