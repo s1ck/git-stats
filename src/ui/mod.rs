@@ -44,7 +44,8 @@ pub(crate) fn render_coauthors(repo: Repo, range: Option<String>) -> Result<()> 
     });
     siv.add_global_callback(Key::F10, Cursive::quit);
 
-    siv.menubar()
+    let _ = siv
+        .menubar()
         .add_subtree(
             "Filter",
             MenuTree::new().leaf("Commit range", show_range_dialog),
@@ -80,7 +81,8 @@ pub(crate) fn render_coauthors(repo: Repo, range: Option<String>) -> Result<()> 
 fn show_co_authors(siv: &mut Cursive, counts: &Rc<PairingCounts>) {
     siv.call_on_name("co-authors", |app: &mut AuthorCountsView| {
         app.set_current_counts(Rc::clone(counts));
-    });
+    })
+    .unwrap();
 }
 
 fn show_range_dialog(siv: &mut Cursive) {
@@ -116,7 +118,7 @@ fn show_range_dialog(siv: &mut Cursive) {
             }
         }
 
-        siv.pop_layer();
+        let _ = siv.pop_layer();
     }
 
     siv.add_layer(

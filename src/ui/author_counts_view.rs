@@ -55,7 +55,7 @@ const EMPTY: &str = " ";
 const BAR_GAP: usize = 2;
 
 impl View for AuthorCountsView {
-    fn draw(&self, printer: &cursive::Printer) {
+    fn draw(&self, printer: &cursive::Printer<'_, '_>) {
         let counts = match self.current_counts() {
             Some(counts) => counts,
             None => return,

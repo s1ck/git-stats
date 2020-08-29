@@ -17,10 +17,10 @@ impl AuthorCounts {
         self.0.entry(author).or_default()
     }
 
-    pub(crate) fn into_resolving_iter<'a>(
+    pub(crate) fn into_resolving_iter(
         self,
-        string_cache: &'a StringCache,
-    ) -> impl Iterator<Item = (&'a str, PairingCounts)> {
+        string_cache: &StringCache,
+    ) -> impl Iterator<Item = (&str, PairingCounts)> {
         ResolvingAuthorCountsIter {
             string_cache,
             inner: self.into_iter(),

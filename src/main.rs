@@ -34,14 +34,14 @@ struct Opts {
 }
 
 /// Parse a replacement key-value pair
-fn parse_key_val(s: &str) -> eyre::Result<(String, String)> {
+fn parse_key_val(s: &str) -> Result<(String, String)> {
     let pos = s
         .find('=')
         .ok_or_else(|| eyre::eyre!("invalid KEY=value: no `=` found in `{}`", s))?;
     Ok((s[..pos].into(), s[pos + 1..].into()))
 }
 
-fn main() -> eyre::Result<()> {
+fn main() -> Result<()> {
     color_eyre::install()?;
     let opts: Opts = Opts::parse();
 

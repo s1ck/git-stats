@@ -21,7 +21,7 @@ impl Repo {
             .suggestion(Suggestions::NotInGitRepository)?;
 
         let mut string_cache = StringCache::new();
-        string_cache.intern(HAN_SOLO);
+        let _ = string_cache.intern(HAN_SOLO);
 
         Ok(Repo {
             repository,
@@ -61,7 +61,7 @@ impl Repo {
         replacements: &Replacements,
         string_cache: &mut StringCache,
         mut author_counts: AuthorCounts,
-        commit: Commit,
+        commit: Commit<'_>,
     ) -> AuthorCounts {
         Self::try_find_and_add_navigators(replacements, string_cache, &mut author_counts, commit)
             .unwrap_or_default();
@@ -72,7 +72,7 @@ impl Repo {
         replacements: &Replacements,
         string_cache: &mut StringCache,
         author_counts: &mut AuthorCounts,
-        commit: Commit,
+        commit: Commit<'_>,
     ) -> Option<()> {
         let commit_message = commit.message()?;
         let author_name = commit.author();
@@ -122,7 +122,7 @@ impl Replacements {
         Self::replace_umlauts(name)
     }
 
-    fn replace_umlauts<'a>(input: &'a str) -> Cow<'a, str> {
+    fn replace_umlauts(input: &str) -> Cow<'_, str> {
         static REPLACEMENTS: Lazy<HashMap<char, &str>> = Lazy::new(|| {
             hashmap! {
                 'Ä' => "Ae",
@@ -166,4 +166,4 @@ enum Suggestions {
     NotInGitRepository,
 }
 
-pub(crate) static APPLICATION: &'static str = env!("CARGO_PKG_NAME");
+pub(crate) static APPLICATION: &str = env!("CARGO_PKG_NAME");
