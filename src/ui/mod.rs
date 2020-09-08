@@ -83,7 +83,6 @@ fn show_range_dialog(siv: &mut Cursive) {
     disable_menu_bar(siv);
 
     fn ok(siv: &mut Cursive) {
-
         let range_start = siv
             .call_on_name("range_start", |view: &mut EditView| view.get_content())
             .unwrap();
@@ -123,7 +122,9 @@ fn show_range_dialog(siv: &mut Cursive) {
                 siv.add_layer(
                     Dialog::around(TextView::new(err.to_string()))
                         .title("Error")
-                        .button("Ok", |s| { let _ = s.pop_layer(); }),
+                        .button("Ok", |s| {
+                            let _ = s.pop_layer();
+                        }),
                 );
             }
         }

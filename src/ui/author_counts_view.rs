@@ -32,7 +32,7 @@ impl AuthorCountsView {
     }
 
     fn current_counts(&self) -> Option<&PairingCounts> {
-        self.current_counts.as_ref().map(|c| &**c)
+        self.current_counts.as_deref()
     }
 }
 
@@ -65,11 +65,11 @@ impl View for AuthorCountsView {
         // calculate bar width and gap
         // the width is guaranteed to be an even number
         // as we want to split the bar into 2
-        let max_x = usize::from(printer.size.x - printer.offset.x);
+        let max_x = printer.size.x - printer.offset.x;
         let data_points = counts.len().max(1);
         let width_per_author = max_x / data_points;
         let mut bar_gap = BAR_GAP;
-        let mut bar_width = width_per_author.saturating_sub(usize::from(bar_gap)).max(1);
+        let mut bar_width = width_per_author.saturating_sub(bar_gap).max(1);
         if bar_width % 2 != 0 {
             bar_width += 1;
             bar_gap -= 1;
