@@ -73,6 +73,7 @@ jobs:
   release:
     name: Release
     needs: test
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
