@@ -36,13 +36,7 @@ pub(crate) fn render_coauthors(repo: Repo, range: Option<String>) -> Result<()> 
 
     let mut siv = cursive::default();
 
-    siv.add_global_callback(Key::Esc, |s| s.select_menubar());
-    siv.add_global_callback(Key::F3, |s| {
-        if s.find_name::<Dialog>("range_dialog").is_none() {
-            show_range_dialog(s);
-        }
-    });
-    siv.add_global_callback(Key::F10, Cursive::quit);
+    add_global_callbacks(&mut siv);
 
     let _ = siv
         .menubar()
@@ -86,7 +80,10 @@ fn show_co_authors(siv: &mut Cursive, counts: &Rc<PairingCounts>) {
 }
 
 fn show_range_dialog(siv: &mut Cursive) {
+    disable_menu_bar(siv);
+
     fn ok(siv: &mut Cursive) {
+
         let range_start = siv
             .call_on_name("range_start", |view: &mut EditView| view.get_content())
             .unwrap();
@@ -102,7 +99,7 @@ fn show_range_dialog(siv: &mut Cursive) {
         };
 
         let mut app = siv.find_name::<AuthorCountsView>("co-authors").unwrap();
-        // TODO: None / select all range
+
         match app.counts_for_range(range) {
             Ok(counts) => {
                 siv.call_on_name(
@@ -120,6 +117,7 @@ fn show_range_dialog(siv: &mut Cursive) {
                 .unwrap();
                 // close range dialog
                 let _ = siv.pop_layer();
+                enable_menu_bar(siv)
             }
             Err(err) => {
                 siv.add_layer(
@@ -142,4 +140,24 @@ fn show_range_dialog(siv: &mut Cursive) {
         .button("Ok", ok)
         .with_name("range_dialog"),
     );
+}
+
+fn add_global_callbacks(siv: &mut Cursive) {
+    enable_menu_bar(siv);
+
+    siv.add_global_callback(Key::F3, |s| {
+        if s.find_name::<Dialog>("range_dialog").is_none() {
+            show_range_dialog(s);
+        }
+    });
+
+    siv.add_global_callback(Key::F10, Cursive::quit);
+}
+
+fn enable_menu_bar(siv: &mut Cursive) {
+    siv.set_global_callback(Key::Esc, |s| s.select_menubar());
+}
+
+fn disable_menu_bar(siv: &mut Cursive) {
+    siv.set_global_callback(Key::Esc, |_s| ());
 }
