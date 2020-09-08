@@ -70,59 +70,55 @@ jobs:
           command: test
           args: --all --all-targets --verbose
 
-    release:
-      name: Release
-      needs: test
-      strategy:
-        matrix:
-          include:
-            - os: macOS-latest
-              target: x86_64-apple-darwin
-              rust_flags: ''
-              upx_args: --best
-              strip: true
-            - os: ubuntu-latest
-              target: x86_64-unknown-linux-gnu
-              rust_flags: ''
-              upx_args: --best --lzma
-              strip: true
-      steps:
-        - name: Checkout
-          if: startsWith(github.ref, 'refs/tags/')
-          uses: actions/checkout@master
-        - name: Toolchain
-          if: startsWith(github.ref, 'refs/tags/')
-          uses: actions-rs/toolchain@v1
-          with:
-            toolchain: stable
-            target: ${{ matrix.target }}
-            default: true
-        - name: Cargo
-          if: startsWith(github.ref, 'refs/tags/')
-          uses: actions-rs/cargo@v1
-          with:
-            command: build
-            args: --release --target=${{ matrix.target }}
-        - name: Compress binaries
-          if: startsWith(github.ref, 'refs/tags/')
-          uses: svenstaro/upx-action@v2
-          with:
-            file: target/${{ matrix.target }}/release/git-stats
-            args: ${{ matrix.upx_args }}
-            strip: ${{ matrix.strip }}
-        - name: Packaging binary
-          if: startsWith(github.ref, 'refs/tags/')
-          shell: bash
-          run: |
-            cd target/${{ matrix.target }}/release
-            tar czvf git-stats-${{ matrix.target }}.tar.gz git-stats
-            shasum -a 256 git-stats-${{ matrix.target }}.tar.gz > git-stats-${{ matrix.target }}.sha256
-        - name: Releasing assets
-          if: startsWith(github.ref, 'refs/tags/')
-          uses: softprops/action-gh-release@v1
-          with:
-            files: |
-              target/${{ matrix.target }}/release/git-stats-${{ matrix.target }}.tar.gz
-              target/${{ matrix.target }}/release/git-stats-${{ matrix.target }}.sha256
-          env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  release:
+    name: Release
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - os: macOS-latest
+            target: x86_64-apple-darwin
+            upx_args: --best
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            upx_args: --best --lzma
+    steps:
+      - name: Checkout
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/checkout@master
+      - name: Toolchain
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          default: true
+      - name: Cargo
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --target=${{ matrix.target }}
+      - name: Compress binaries
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: svenstaro/upx-action@v2
+        with:
+          file: target/${{ matrix.target }}/release/git-stats
+          args: ${{ matrix.upx_args }}
+          strip: true
+      - name: Packaging binary
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czvf git-stats-${{ matrix.target }}.tar.gz git-stats
+          shasum -a 256 git-stats-${{ matrix.target }}.tar.gz > git-stats-${{ matrix.target }}.sha256
+      - name: Releasing assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            target/${{ matrix.target }}/release/git-stats-${{ matrix.target }}.tar.gz
+            target/${{ matrix.target }}/release/git-stats-${{ matrix.target }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
