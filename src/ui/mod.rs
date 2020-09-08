@@ -93,11 +93,17 @@ fn show_range_dialog(siv: &mut Cursive) {
         let range_end = siv
             .call_on_name("range_end", |view: &mut EditView| view.get_content())
             .unwrap();
-        let range = format!("{}..{}", range_start, range_end);
+
+        // set to full range if nothing is specified
+        let range = if range_start.is_empty() && range_end.is_empty() {
+            None
+        } else {
+            Some(format!("{}..{}", range_start, range_end))
+        };
 
         let mut app = siv.find_name::<AuthorCountsView>("co-authors").unwrap();
         // TODO: None / select all range
-        match app.counts_for_range(Some(range)) {
+        match app.counts_for_range(range) {
             Ok(counts) => {
                 siv.call_on_name(
                     "committers",
