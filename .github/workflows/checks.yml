@@ -99,8 +99,7 @@ jobs:
           target: ${{ matrix.target }}
           default: true
       - name: Install dependencies
-        if: startsWith(github.ref, 'refs/tags/')
-        if: ${{ matrix.os }} == 'ubuntu-latest'
+        if: startsWith(github.ref, 'refs/tags/') && ${{ matrix.os }} == 'ubuntu-latest'
         run: sudo apt install libncursesw5-dev
       - name: Cargo
         if: startsWith(github.ref, 'refs/tags/')
