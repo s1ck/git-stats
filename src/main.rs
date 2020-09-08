@@ -3,10 +3,15 @@ extern crate maplit;
 
 use std::path::PathBuf;
 
+use crate::{
+    author_counts::{AuthorCounts, PairingCounts},
+    repo::{Repo, HAN_SOLO},
+    stringcache::StringCache,
+};
 use clap::{AppSettings, Clap};
-use repo::Repo;
+use eyre::Result;
 
-mod app;
+mod author_counts;
 mod repo;
 mod stringcache;
 mod ui;
@@ -29,14 +34,14 @@ struct Opts {
 }
 
 /// Parse a replacement key-value pair
-fn parse_key_val(s: &str) -> eyre::Result<(String, String)> {
+fn parse_key_val(s: &str) -> Result<(String, String)> {
     let pos = s
         .find('=')
         .ok_or_else(|| eyre::eyre!("invalid KEY=value: no `=` found in `{}`", s))?;
     Ok((s[..pos].into(), s[pos + 1..].into()))
 }
 
-fn main() -> eyre::Result<()> {
+fn main() -> Result<()> {
     color_eyre::install()?;
     let opts: Opts = Opts::parse();
 
