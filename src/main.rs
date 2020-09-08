@@ -1,5 +1,7 @@
 #[macro_use]
 extern crate maplit;
+#[macro_use]
+extern crate eyre;
 
 use std::path::PathBuf;
 

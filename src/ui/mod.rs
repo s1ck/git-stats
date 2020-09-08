@@ -112,13 +112,17 @@ fn show_range_dialog(siv: &mut Cursive) {
                     },
                 )
                 .unwrap();
+                // close range dialog
+                let _ = siv.pop_layer();
             }
-            Err(_) => {
-                // TODO: handle range errors
+            Err(err) => {
+                siv.add_layer(
+                    Dialog::around(TextView::new(err.to_string()))
+                        .title("Error")
+                        .button("Ok", |s| { let _ = s.pop_layer(); }),
+                );
             }
         }
-
-        let _ = siv.pop_layer();
     }
 
     siv.add_layer(

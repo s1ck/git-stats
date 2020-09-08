@@ -1,9 +1,11 @@
-use crate::{AuthorCounts, Result, StringCache};
+use std::{borrow::Cow, collections::HashMap, path::PathBuf};
+
 use color_eyre::Section;
 use git2::{Commit, Repository};
 use itertools::Itertools;
 use once_cell::sync::Lazy;
-use std::{borrow::Cow, collections::HashMap, path::PathBuf};
+
+use crate::{AuthorCounts, Result, StringCache};
 
 pub const HAN_SOLO: &str = "Han Solo";
 
@@ -41,8 +43,12 @@ impl Repo {
 
         let mut revwalk = repository.revwalk()?;
         match range {
-            Some(range) => revwalk.push_range(range.as_str())?,
-            None => revwalk.push_head()?,
+            Some(range) => revwalk
+                .push_range(range.as_str())
+                .map_err(|err| eyre!("Invalid range: `{}`. Git error: {}", range, err.message()))?,
+            None => revwalk
+                .push_head()
+                .map_err(|err| eyre!("Git error: {}", err.message()))?,
         };
 
         let author_counts = revwalk
