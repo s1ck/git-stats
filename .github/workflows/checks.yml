@@ -55,7 +55,7 @@ jobs:
     needs: [check, fmt, clippy]
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macOS-latest]
+        os: [ubuntu-latest] # TODO: figure out how to install dependencies for windows-latest, macOS-latest
         rust: [stable, nightly]
     runs-on: ${{ matrix.os }}
     steps:
@@ -65,6 +65,9 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
+      - name: Install dependencies
+        if: ${{ matrix.os }} == 'ubuntu-latest'
+        run: sudo apt install libncursesw5-dev
       - uses: actions-rs/cargo@v1
         with:
           command: test
@@ -77,9 +80,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macOS-latest
-            target: x86_64-apple-darwin
-            upx_args: --best
+          # TODO: figure out how to install dependencies for macOS-latest
+          # - os: macOS-latest
+          #   target: x86_64-apple-darwin
+          #   upx_args: --best
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             upx_args: --best --lzma
@@ -94,6 +98,10 @@ jobs:
           toolchain: stable
           target: ${{ matrix.target }}
           default: true
+      - name: Install dependencies
+        if: startsWith(github.ref, 'refs/tags/')
+        if: ${{ matrix.os }} == 'ubuntu-latest'
+        run: sudo apt install libncursesw5-dev
       - name: Cargo
         if: startsWith(github.ref, 'refs/tags/')
         uses: actions-rs/cargo@v1
