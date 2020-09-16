@@ -451,8 +451,10 @@ dependencies = [
  "ignore",
  "indexmap",
  "itertools",
+ "log",
  "maplit",
  "once_cell",
+ "simplelog",
  "str-utils",
  "thiserror",
  "unicode-width",
@@ -902,6 +904,17 @@ checksum = "a3e12110bc539e657a646068aaf5eb5b63af9d0c1f7b29c97113fad80e15f035"
 dependencies = [
  "arc-swap",
  "libc",
+]
+
+[[package]]
+name = "simplelog"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b2736f58087298a448859961d3f4a0850b832e72619d75adc69da7993c2cd3c"
+dependencies = [
+ "chrono",
+ "log",
+ "termcolor",
 ]
 
 [[package]]

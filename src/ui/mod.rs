@@ -11,7 +11,7 @@ use cursive::{
 use cursive_tree_view::{Placement, TreeView};
 use std::{ops::Deref, rc::Rc};
 
-use crate::ui::hot_paths_view::{expand_tree, TreeEntry};
+use crate::ui::hot_paths_view::{expand_tree, CustomTreeView, TreeEntry};
 use std::env;
 use std::path::{Path, PathBuf};
 
@@ -32,9 +32,8 @@ pub(crate) fn render_hotpaths(
         }
     };
 
-    let mut tree = TreeView::<TreeEntry>::new().on_submit(|c, index| {
-        let tree = c.find_name::<TreeView<TreeEntry>>("tree").unwrap();
-        // let text = c.find_name::<TextView>("text").unwrap();
+    fn submit_handler(c: &mut Cursive, index: usize) {
+        let tree = c.find_name::<CustomTreeView>("tree").unwrap();
 
         if let Some(entry) = tree.borrow_item(index) {
             c.call_on_name("text", |text: &mut TextView| {
@@ -42,7 +41,10 @@ pub(crate) fn render_hotpaths(
             })
             .unwrap();
         }
-    });
+    }
+
+    let mut tree = TreeView::<TreeEntry>::new().on_submit(submit_handler);
+    let mut tree = CustomTreeView(tree, Rc::new(submit_handler));
 
     tree.insert_item(
         TreeEntry {
@@ -58,7 +60,7 @@ pub(crate) fn render_hotpaths(
     // Lazily insert directory listings for sub nodes
     tree.set_on_collapse(|siv: &mut Cursive, row, is_collapsed, children| {
         if !is_collapsed && children == 0 {
-            siv.call_on_name("tree", move |tree: &mut TreeView<TreeEntry>| {
+            siv.call_on_name("tree", move |tree: &mut CustomTreeView| {
                 if let Some(dir) = tree.borrow_item(row).unwrap().dir.clone() {
                     expand_tree(tree, row, &dir);
                 }
@@ -105,124 +107,6 @@ pub(crate) fn render_hotpaths(
     siv.run();
 
     Ok(())
-}
-
-struct CustomTreeView(TreeView<TreeEntry>);
-
-impl Deref for CustomTreeView {
-    type Target = TreeView<TreeEntry>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl View for CustomTreeView {
-    fn draw(&self, printer: &cursive::Printer) {
-        View::draw(&self.0, printer)
-    }
-
-    fn layout(&mut self, v: cursive::Vec2) {
-        View::layout(&mut self.0, v)
-    }
-
-    fn needs_relayout(&self) -> bool {
-        View::needs_relayout(&self.0)
-    }
-
-    fn required_size(&mut self, constraint: cursive::Vec2) -> cursive::Vec2 {
-        View::required_size(&mut self.0, constraint)
-    }
-
-    fn on_event(&mut self, e: cursive::event::Event) -> cursive::event::EventResult {
-        if !self.is_enabled() {
-            return EventResult::Ignored;
-        }
-
-        let last_focus = self.focus;
-        match event {
-            Event::Key(Key::Up) if self.focus > 0 => {
-                self.focus_up(1);
-            }
-            Event::Key(Key::Down) if self.focus + 1 < self.list.height() => {
-                self.focus_down(1);
-            }
-            Event::Key(Key::PageUp) => {
-                self.focus_up(10);
-            }
-            Event::Key(Key::PageDown) => {
-                self.focus_down(10);
-            }
-            Event::Key(Key::Home) => {
-                self.focus = 0;
-            }
-            Event::Key(Key::End) => {
-                self.focus = self.list.height() - 1;
-            }
-            Event::Key(Key::Enter) => {
-                if !self.is_empty() {
-                    let row = self.focus;
-                    let index = self.list.row_to_item_index(row);
-
-                    if self.list.is_container_item(index) {
-                        let collapsed = self.list.get_collapsed(index);
-                        let children = self.list.get_children(index);
-
-                        self.list.set_collapsed(index, !collapsed);
-
-                        if self.on_collapse.is_some() {
-                            let cb = self.on_collapse.clone().unwrap();
-                            return EventResult::Consumed(Some(Callback::from_fn(move |s| {
-                                cb(s, row, !collapsed, children)
-                            })));
-                        }
-                    } else if self.on_submit.is_some() {
-                        let cb = self.on_submit.clone().unwrap();
-                        return EventResult::Consumed(Some(Callback::from_fn(move |s| cb(s, row))));
-                    }
-                }
-            }
-            _ => return EventResult::Ignored,
-        }
-
-        let focus = self.focus;
-        self.scrollbase.scroll_to(focus);
-
-        if !self.is_empty() && last_focus != focus {
-            let row = self.focus;
-            EventResult::Consumed(
-                self.on_select
-                    .clone()
-                    .map(|cb| Callback::from_fn(move |s| cb(s, row))),
-            )
-        } else {
-            EventResult::Ignored
-        }
-    }
-
-    fn call_on_any<'a>(
-        &mut self,
-        sel: &cursive::view::Selector<'_>,
-        cb: cursive::event::AnyCb<'a>,
-    ) {
-        View::call_on_any(&mut self.0, sel, cb)
-    }
-
-    fn focus_view(&mut self, sel: &cursive::view::Selector<'_>) -> Result<(), ()> {
-        View::focus_view(&mut self.0, sel)
-    }
-
-    fn take_focus(&mut self, source: cursive::direction::Direction) -> bool {
-        View::take_focus(&mut self.0, source)
-    }
-
-    fn important_area(&self, view_size: cursive::Vec2) -> cursive::Rect {
-        View::important_area(&self.0, view_size)
-    }
-
-    fn type_name(&self) -> &'static str {
-        View::type_name(&self.0)
-    }
 }
 
 pub(crate) fn render_coauthors(repo: Repo, range: Option<String>) -> Result<()> {
