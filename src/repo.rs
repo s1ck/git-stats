@@ -16,7 +16,10 @@ pub struct Repo {
 }
 
 impl Repo {
-    pub(crate) fn open(path: Option<PathBuf>, replacements: Vec<(String, String)>) -> Result<Self> {
+    pub(crate) fn open(
+        path: Option<&PathBuf>,
+        replacements: Vec<(String, String)>,
+    ) -> Result<Self> {
         let repository = path
             .map_or_else(Repository::open_from_env, Repository::discover)
             .map_err(|_| Error::NotInGitRepository)

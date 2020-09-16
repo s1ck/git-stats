@@ -13,24 +13,36 @@ use std::rc::Rc;
 
 use crate::ui::hot_paths_view::{expand_tree, TreeEntry};
 use std::env;
+use std::path::{Path, PathBuf};
 
 mod author_counts_view;
 mod hot_paths_view;
 
-pub(crate) fn render_hotpaths(repo: Repo, range: Option<String>) -> Result<()> {
-    let mut tree = TreeView::<TreeEntry>::new();
-    let path = env::current_dir().expect("Working directory missing.");
+pub(crate) fn render_hotpaths(path: Option<&Path>, repo: Repo, range: Option<String>) -> Result<()> {
+    let current_dir: PathBuf;
+    let path = match path {
+        Some(p) => p,
+        None => {
+            current_dir = env::current_dir()?;
+            current_dir.as_ref()
+        },
+    };
+
+    let mut tree = TreeView::<TreeEntry>::new()
+        // Center the text horizontally
+        .h_align(HAlign::Left)
+        .v_align(VAlign::Top);
 
     tree.insert_item(
         TreeEntry {
             name: path.file_name().unwrap().to_str().unwrap().to_string(),
-            dir: Some(path.clone()),
+            dir: Some(path.to_path_buf()),
         },
         Placement::After,
         0,
     );
 
-    expand_tree(&mut tree, 0, &path);
+    expand_tree(&mut tree, 0, path);
 
     // Lazily insert directory listings for sub nodes
     tree.set_on_collapse(|siv: &mut Cursive, row, is_collapsed, children| {
@@ -45,7 +57,24 @@ pub(crate) fn render_hotpaths(repo: Repo, range: Option<String>) -> Result<()> {
 
     // Setup Cursive
     let mut siv = Cursive::default();
-    siv.add_layer(Dialog::around(tree.with_name("tree")).title("File View"));
+
+    // Let's add a ResizedView to keep the list at a reasonable size
+    // (it can scroll anyway).
+    siv.add_fullscreen_layer(
+        LinearLayout::horizontal()
+            .child(
+                Dialog::around(
+                    tree.with_name("tree").scrollable().full_height(), // .fixed_width(usize::from(app.author_widget_width()))
+                )
+                    .title("File View"),
+            )
+            .child(DummyView.fixed_width(1))
+            .child(
+                Dialog::around(counts_view.with_name("co-authors").full_width()) // TextView::new("foobar").with_name("co-authors")
+                    .title("Co-authors"),
+            )
+            .full_screen(),
+    );
 
     siv.run();
 

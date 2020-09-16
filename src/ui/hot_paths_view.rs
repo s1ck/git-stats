@@ -1,7 +1,7 @@
 use core::fmt;
 use std::cmp::Ordering;
 use std::ffi::OsStr;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::{fs, io};
 
 use cursive_tree_view::{Placement, TreeView};
@@ -19,7 +19,7 @@ impl fmt::Display for TreeEntry {
     }
 }
 
-pub(crate) fn collect_entries(dir: &PathBuf, entries: &mut Vec<TreeEntry>) -> eyre::Result<()> {
+pub(crate) fn collect_entries(dir: &Path, entries: &mut Vec<TreeEntry>) -> eyre::Result<()> {
     if dir.is_dir() {
         let walk = WalkBuilder::new(dir)
             .max_depth(Some(1))
@@ -54,7 +54,7 @@ pub(crate) fn collect_entries(dir: &PathBuf, entries: &mut Vec<TreeEntry>) -> ey
     Ok(())
 }
 
-pub(crate) fn expand_tree(tree: &mut TreeView<TreeEntry>, parent_row: usize, dir: &PathBuf) {
+pub(crate) fn expand_tree(tree: &mut TreeView<TreeEntry>, parent_row: usize, dir: &Path) {
     let mut entries = Vec::new();
     collect_entries(dir, &mut entries).ok();
 

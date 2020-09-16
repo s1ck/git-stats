@@ -53,7 +53,7 @@ fn main() -> Result<()> {
         range,
     } = opts;
 
-    let repo = Repo::open(repository, replacements)?;
+    let repo = Repo::open(repository.as_ref(), replacements)?;
     // ui::render_coauthors(repo, range)
-    ui::render_hotpaths(repo, range)
+    ui::render_hotpaths(repository.as_deref(), repo, range)
 }
