@@ -18,20 +18,31 @@ use std::path::{Path, PathBuf};
 mod author_counts_view;
 mod hot_paths_view;
 
-pub(crate) fn render_hotpaths(path: Option<&Path>, repo: Repo, range: Option<String>) -> Result<()> {
+pub(crate) fn render_hotpaths(
+    path: Option<&Path>,
+    repo: Repo,
+    range: Option<String>,
+) -> Result<()> {
     let current_dir: PathBuf;
     let path = match path {
         Some(p) => p,
         None => {
             current_dir = env::current_dir()?;
             current_dir.as_ref()
-        },
+        }
     };
 
-    let mut tree = TreeView::<TreeEntry>::new()
-        // Center the text horizontally
-        .h_align(HAlign::Left)
-        .v_align(VAlign::Top);
+    let mut tree = TreeView::<TreeEntry>::new().on_submit(|c, index| {
+        let tree = c.find_name::<TreeView<TreeEntry>>("tree").unwrap();
+        // let text = c.find_name::<TextView>("text").unwrap();
+
+        if let Some(entry) = tree.borrow_item(index) {
+            c.call_on_name("text", |text: &mut TextView| {
+                text.set_content(format!("{:#?}", entry));
+            })
+            .unwrap();
+        }
+    });
 
     tree.insert_item(
         TreeEntry {
@@ -58,21 +69,36 @@ pub(crate) fn render_hotpaths(path: Option<&Path>, repo: Repo, range: Option<Str
     // Setup Cursive
     let mut siv = Cursive::default();
 
+    add_global_callbacks(&mut siv);
+
     // Let's add a ResizedView to keep the list at a reasonable size
     // (it can scroll anyway).
     siv.add_fullscreen_layer(
         LinearLayout::horizontal()
             .child(
                 Dialog::around(
-                    tree.with_name("tree").scrollable().full_height(), // .fixed_width(usize::from(app.author_widget_width()))
+                    tree.with_name("tree")
+                        .scrollable()
+                        .full_height()
+                        .min_width(21), // .fixed_width(usize::from(app.author_widget_width()))
                 )
-                    .title("File View"),
+                .title("File View"),
             )
             .child(DummyView.fixed_width(1))
             .child(
-                Dialog::around(counts_view.with_name("co-authors").full_width()) // TextView::new("foobar").with_name("co-authors")
-                    .title("Co-authors"),
+                Dialog::around(
+                    TextView::new("select a file on the left")
+                        .with_name("text")
+                        .scrollable()
+                        .full_height()
+                        .full_width(),
+                )
+                .title("Commits"),
             )
+            // .child(
+            //     Dialog::around(counts_view.with_name("co-authors").full_width()) // TextView::new("foobar").with_name("co-authors")
+            //         .title("Co-authors"),
+            // )
             .full_screen(),
     );
 
