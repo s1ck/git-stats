@@ -19,9 +19,11 @@ clap = "3.0.0-beta.1"
 co-authors = { path = "./co-authors" }
 color-eyre = { version = "0.5.1", default-features = false }
 cursive = "0.15.0"
+cursive_tree_view = { git = "https://github.com/matthiasbeyer/cursive_tree_view", branch = "update-deps" }
 eyre = "0.6.0"
 fxhash = "0.2.1"
 git2 = { version = "0.13.10", default-features = false }
+ignore = "0.4"
 indexmap = "1.5.1"
 itertools = "0.9.0"
 maplit = "1.0.2"

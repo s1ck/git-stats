@@ -6,11 +6,51 @@ use cursive::{
     menu::MenuTree,
     traits::{Nameable, Resizable, Scrollable},
     views::{Dialog, DummyView, EditView, LinearLayout, SelectView, TextView},
-    Cursive,
+    Cursive, CursiveExt,
 };
+use cursive_tree_view::{Placement, TreeView};
 use std::rc::Rc;
 
+use crate::ui::hot_paths_view::{expand_tree, TreeEntry};
+use std::env;
+
 mod author_counts_view;
+mod hot_paths_view;
+
+pub(crate) fn render_hotpaths(repo: Repo, range: Option<String>) -> Result<()> {
+    let mut tree = TreeView::<TreeEntry>::new();
+    let path = env::current_dir().expect("Working directory missing.");
+
+    tree.insert_item(
+        TreeEntry {
+            name: path.file_name().unwrap().to_str().unwrap().to_string(),
+            dir: Some(path.clone()),
+        },
+        Placement::After,
+        0,
+    );
+
+    expand_tree(&mut tree, 0, &path);
+
+    // Lazily insert directory listings for sub nodes
+    tree.set_on_collapse(|siv: &mut Cursive, row, is_collapsed, children| {
+        if !is_collapsed && children == 0 {
+            siv.call_on_name("tree", move |tree: &mut TreeView<TreeEntry>| {
+                if let Some(dir) = tree.borrow_item(row).unwrap().dir.clone() {
+                    expand_tree(tree, row, &dir);
+                }
+            });
+        }
+    });
+
+    // Setup Cursive
+    let mut siv = Cursive::default();
+    siv.add_layer(Dialog::around(tree.with_name("tree")).title("File View"));
+
+    siv.run();
+
+    Ok(())
+}
 
 pub(crate) fn render_coauthors(repo: Repo, range: Option<String>) -> Result<()> {
     let mut counts_view = AuthorCountsView::new(repo);
