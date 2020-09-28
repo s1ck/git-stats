@@ -6,6 +6,7 @@ use itertools::Itertools;
 use once_cell::sync::Lazy;
 
 use crate::{AuthorCounts, Result, StringCache};
+use std::path::Path;
 
 pub const HAN_SOLO: &str = "Han Solo";
 
@@ -33,6 +34,10 @@ impl Repo {
             replacements: Replacements(replacements),
             string_cache,
         })
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        self.repository.path()
     }
 
     pub(crate) fn string_cache(&self) -> &StringCache {

@@ -20,6 +20,7 @@ use crate::{
 mod author_counts;
 mod repo;
 mod stringcache;
+mod author_path_counts;
 mod ui;
 
 #[derive(Clap, Debug)]
@@ -65,5 +66,5 @@ fn main() -> Result<()> {
 
     let repo = Repo::open(repository.as_ref(), replacements)?;
     // ui::render_coauthors(repo, range)
-    ui::render_hotpaths(repository.as_deref(), repo, range)
+    ui::render_path_counts(repo, range)
 }

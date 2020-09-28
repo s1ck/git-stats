@@ -11,26 +11,15 @@ use cursive::{
 use cursive_tree_view::{Placement, TreeView};
 use std::{ops::Deref, rc::Rc};
 
-use crate::ui::hot_paths_view::{expand_tree, CustomTreeView, TreeEntry};
+use crate::ui::author_path_counts_view::{expand_tree, CustomTreeView, TreeEntry};
 use std::env;
 use std::path::{Path, PathBuf};
 
 mod author_counts_view;
-mod hot_paths_view;
+mod author_path_counts_view;
 
-pub(crate) fn render_hotpaths(
-    path: Option<&Path>,
-    repo: Repo,
-    range: Option<String>,
-) -> Result<()> {
-    let current_dir: PathBuf;
-    let path = match path {
-        Some(p) => p,
-        None => {
-            current_dir = env::current_dir()?;
-            current_dir.as_ref()
-        }
-    };
+pub(crate) fn render_path_counts(repo: Repo, range: Option<String>) -> Result<()> {
+    let path = repo.path();
 
     fn submit_handler(c: &mut Cursive, index: usize) {
         let tree = c.find_name::<CustomTreeView>("tree").unwrap();
@@ -39,7 +28,7 @@ pub(crate) fn render_hotpaths(
             c.call_on_name("text", |text: &mut TextView| {
                 text.set_content(format!("{:#?}", entry));
             })
-            .unwrap();
+                .unwrap();
         }
     }
 
@@ -84,7 +73,7 @@ pub(crate) fn render_hotpaths(
                         .full_height()
                         .min_width(21), // .fixed_width(usize::from(app.author_widget_width()))
                 )
-                .title("File View"),
+                    .title("File View"),
             )
             .child(DummyView.fixed_width(1))
             .child(
@@ -95,12 +84,8 @@ pub(crate) fn render_hotpaths(
                         .full_height()
                         .full_width(),
                 )
-                .title("Commits"),
+                    .title("Commits"),
             )
-            // .child(
-            //     Dialog::around(counts_view.with_name("co-authors").full_width()) // TextView::new("foobar").with_name("co-authors")
-            //         .title("Co-authors"),
-            // )
             .full_screen(),
     );
 
