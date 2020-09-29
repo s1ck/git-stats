@@ -19,7 +19,7 @@ mod author_counts_view;
 mod author_path_counts_view;
 
 pub(crate) fn render_path_counts(repo: Repo, range: Option<String>) -> Result<()> {
-    let path = repo.path();
+    let path = repo.workdir().unwrap();
 
     fn submit_handler(c: &mut Cursive, index: usize) {
         let tree = c.find_name::<CustomTreeView>("tree").unwrap();
@@ -44,7 +44,7 @@ pub(crate) fn render_path_counts(repo: Repo, range: Option<String>) -> Result<()
         0,
     );
 
-    expand_tree(&mut tree, 0, path);
+    expand_tree(&mut tree, 0, &path);
 
     // Lazily insert directory listings for sub nodes
     tree.set_on_collapse(|siv: &mut Cursive, row, is_collapsed, children| {

@@ -1,12 +1,15 @@
 use std::{borrow::Cow, collections::HashMap, path::PathBuf};
+use std::iter::once;
+use std::path::Path;
 
 use color_eyre::Section;
-use git2::{Commit, Repository};
+use cursive::With;
+use git2::{Commit, DiffOptions, Pathspec, Repository};
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 
 use crate::{AuthorCounts, Result, StringCache};
-use std::path::Path;
+use crate::author_path_counts::AuthorPathCounts;
 
 pub const HAN_SOLO: &str = "Han Solo";
 
@@ -36,15 +39,15 @@ impl Repo {
         })
     }
 
-    pub(crate) fn path(&self) -> &Path {
-        self.repository.path()
+    pub(crate) fn workdir(&self) -> Option<PathBuf> {
+        self.repository.workdir().map(|p| p.to_path_buf())
     }
 
     pub(crate) fn string_cache(&self) -> &StringCache {
         &self.string_cache
     }
 
-    pub(crate) fn extract_coauthors(&mut self, range: Option<String>) -> Result<AuthorCounts> {
+    pub(crate) fn extract_author_counts(&mut self, range: Option<String>) -> Result<AuthorCounts> {
         let repository = &self.repository;
         let replacements = &self.replacements;
         let string_cache = &mut self.string_cache;
@@ -69,6 +72,54 @@ impl Repo {
             });
 
         Ok(author_counts)
+    }
+
+    pub(crate) fn extract_author_path_counts(&mut self, spec: &str, range: Option<String>) -> Result<AuthorPathCounts> {
+        let repository = &self.repository;
+        let replacements = &self.replacements;
+        let string_cache = &mut self.string_cache;
+
+        let mut revwalk = repository.revwalk()?;
+
+        let mut diff_options = DiffOptions::new();
+        diff_options.pathspec(spec);
+
+        match range {
+            Some(range) => revwalk
+                .push_range(range.as_str())
+                .map_err(|err| eyre!("Invalid range: `{}`. Git error: {}", range, err.message()))?,
+            None => revwalk
+                .push_head()
+                .map_err(|err| eyre!("Git error: {}", err.message()))?,
+        };
+
+        revwalk
+            .filter_map(|oid| repository.find_commit(oid.ok()?).ok())
+            // Filter merge commits
+            // TODO: This should be an argument option
+            .filter(|commit| commit.parent_count() == 1)
+            .filter(|commit| commit.parents().all(|parent| {
+                self.match_with_parent(&repository, &commit, &parent, &mut diff_options).unwrap_or(false)
+            })
+            )
+            .for_each(|commit| {
+                eprintln!("commit = {:#?}", commit);
+            });
+
+        Ok(AuthorPathCounts::default())
+    }
+
+    fn match_with_parent(
+        &self,
+        repo: &Repository,
+        commit: &Commit,
+        parent: &Commit,
+        opts: &mut DiffOptions,
+    ) -> eyre::Result<bool> {
+        let a = parent.tree()?;
+        let b = commit.tree()?;
+        let diff = repo.diff_tree_to_tree(Some(&a), Some(&b), Some(opts))?;
+        Ok(diff.deltas().len() > 0)
     }
 
     fn find_and_add_navigators(
