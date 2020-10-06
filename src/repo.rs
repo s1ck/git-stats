@@ -4,7 +4,7 @@ use std::path::Path;
 
 use color_eyre::Section;
 use cursive::With;
-use git2::{Commit, DiffOptions, Pathspec, Repository};
+use git2::{Commit, Delta, Diff, DiffDelta, DiffFormat, DiffOptions, Patch, Pathspec, Repository};
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 
@@ -93,33 +93,46 @@ impl Repo {
                 .map_err(|err| eyre!("Git error: {}", err.message()))?,
         };
 
-        revwalk
+        let author_path_counts = revwalk
             .filter_map(|oid| repository.find_commit(oid.ok()?).ok())
             // Filter merge commits
             // TODO: This should be an argument option
             .filter(|commit| commit.parent_count() == 1)
-            .filter(|commit| commit.parents().all(|parent| {
-                self.match_with_parent(&repository, &commit, &parent, &mut diff_options).unwrap_or(false)
-            })
+            .flat_map(|commit| commit.parents()
+                .filter_map(|parent| {
+                    let author_name = commit.author();
+                    let author_name = author_name.name().unwrap();
+                    let author_name = Self::author_id(replacements, string_cache, author_name);
+                    let diff = Self::diff(&repository, &commit, &parent, &mut diff_options).unwrap();
+
+                    if diff.deltas().len() == 0 {
+                        return None;
+                    }
+
+                    let stats = diff.stats().unwrap();
+                    Some((author_name, stats.insertions(), stats.deletions()))
+                })
+                .collect::<Vec<_>>()
             )
-            .for_each(|commit| {
-                eprintln!("commit = {:#?}", commit);
+            .fold(AuthorPathCounts::default(), |mut counts, (author, additions, deletions)| {
+                counts.add_additions(author, additions as u32);
+                counts.add_deletions(author, deletions as u32);
+                counts
             });
 
-        Ok(AuthorPathCounts::default())
+        Ok(author_path_counts)
     }
 
-    fn match_with_parent(
-        &self,
-        repo: &Repository,
+    fn diff<'a>(
+        repo: &'a Repository,
         commit: &Commit,
         parent: &Commit,
         opts: &mut DiffOptions,
-    ) -> eyre::Result<bool> {
+    ) -> eyre::Result<Diff<'a>> {
         let a = parent.tree()?;
         let b = commit.tree()?;
         let diff = repo.diff_tree_to_tree(Some(&a), Some(&b), Some(opts))?;
-        Ok(diff.deltas().len() > 0)
+        Ok(diff)
     }
 
     fn find_and_add_navigators(

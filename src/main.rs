@@ -67,6 +67,7 @@ fn main() -> Result<()> {
     let mut repo = Repo::open(repository.as_ref(), replacements)?;
     // ui::render_coauthors(repo, range)
     // ui::render_path_counts(repo, range)
-    let foo = repo.extract_author_path_counts("co-authors", None);
+    let author_path_counts = repo.extract_author_path_counts("co-authors", None);
+    eprintln!("author_path_counts = {:#?}", author_path_counts);
     Ok(())
 }
