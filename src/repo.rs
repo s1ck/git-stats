@@ -74,7 +74,7 @@ impl Repo {
         Ok(author_counts)
     }
 
-    pub(crate) fn extract_author_path_counts(&mut self, spec: &str, range: Option<String>) -> Result<AuthorPathCounts> {
+    pub(crate) fn extract_author_path_counts(&mut self, path_spec: &Path, range: Option<&String>) -> Result<AuthorPathCounts> {
         let repository = &self.repository;
         let replacements = &self.replacements;
         let string_cache = &mut self.string_cache;
@@ -82,7 +82,7 @@ impl Repo {
         let mut revwalk = repository.revwalk()?;
 
         let mut diff_options = DiffOptions::new();
-        diff_options.pathspec(spec);
+        diff_options.pathspec(path_spec);
 
         match range {
             Some(range) => revwalk
@@ -101,9 +101,9 @@ impl Repo {
             .flat_map(|commit| commit.parents()
                 .filter_map(|parent| {
                     let author_name = commit.author();
-                    let author_name = author_name.name().unwrap();
+                    let author_name = author_name.name()?;
                     let author_name = Self::author_id(replacements, string_cache, author_name);
-                    let diff = Self::diff(&repository, &commit, &parent, &mut diff_options).unwrap();
+                    let diff = Self::diff(&repository, &commit, &parent, &mut diff_options).ok()?;
 
                     if diff.deltas().len() == 0 {
                         return None;

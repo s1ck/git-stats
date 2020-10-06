@@ -1,19 +1,22 @@
-use crate::{PairingCounts, Repo, Result};
-use author_counts_view::AuthorCountsView;
-use cursive::{
-    align::{HAlign, VAlign},
-    event::Key,
-    menu::MenuTree,
-    traits::{Nameable, Resizable, Scrollable},
-    views::{Dialog, DummyView, EditView, LinearLayout, SelectView, TextView},
-    Cursive, CursiveExt, View,
-};
-use cursive_tree_view::{Placement, TreeView};
 use std::{ops::Deref, rc::Rc};
-
-use crate::ui::author_path_counts_view::{expand_tree, CustomTreeView, TreeEntry};
 use std::env;
 use std::path::{Path, PathBuf};
+
+use cursive::{
+    align::{HAlign, VAlign},
+    Cursive,
+    CursiveExt,
+    event::Key,
+    menu::MenuTree,
+    traits::{Nameable, Resizable, Scrollable}, View, views::{Dialog, DummyView, EditView, LinearLayout, SelectView, TextView},
+};
+use cursive_tree_view::{Placement, TreeView};
+
+use author_counts_view::AuthorCountsView;
+
+use crate::{PairingCounts, Repo, Result};
+use crate::author_path_counts::AuthorPathCounts;
+use crate::ui::author_path_counts_view::{AuthorPathCountsView, CustomTreeView, expand_tree, TreeEntry};
 
 mod author_counts_view;
 mod author_path_counts_view;
@@ -21,12 +24,14 @@ mod author_path_counts_view;
 pub(crate) fn render_path_counts(repo: Repo, range: Option<String>) -> Result<()> {
     let path = repo.workdir().unwrap();
 
+    let author_path_counts_view = AuthorPathCountsView::new(repo, range);
+
     fn submit_handler(c: &mut Cursive, index: usize) {
         let tree = c.find_name::<CustomTreeView>("tree").unwrap();
 
         if let Some(entry) = tree.borrow_item(index) {
-            c.call_on_name("text", |text: &mut TextView| {
-                text.set_content(format!("{:#?}", entry));
+            c.call_on_name("path-counts", |view: &mut AuthorPathCountsView| {
+                view.update_counts(entry.path.as_ref());
             })
                 .unwrap();
         }
@@ -36,10 +41,7 @@ pub(crate) fn render_path_counts(repo: Repo, range: Option<String>) -> Result<()
     let mut tree = CustomTreeView(tree, Rc::new(submit_handler));
 
     tree.insert_item(
-        TreeEntry {
-            name: path.file_name().unwrap().to_str().unwrap().to_string(),
-            dir: Some(path.to_path_buf()),
-        },
+        TreeEntry::new(&path),
         Placement::After,
         0,
     );
@@ -50,9 +52,9 @@ pub(crate) fn render_path_counts(repo: Repo, range: Option<String>) -> Result<()
     tree.set_on_collapse(|siv: &mut Cursive, row, is_collapsed, children| {
         if !is_collapsed && children == 0 {
             siv.call_on_name("tree", move |tree: &mut CustomTreeView| {
-                if let Some(dir) = tree.borrow_item(row).unwrap().dir.clone() {
-                    expand_tree(tree, row, &dir);
-                }
+                let dir = tree.borrow_item(row).unwrap();
+                let dir = dir.path.to_owned();
+                expand_tree(tree, row, &dir);
             });
         }
     });
@@ -77,14 +79,8 @@ pub(crate) fn render_path_counts(repo: Repo, range: Option<String>) -> Result<()
             )
             .child(DummyView.fixed_width(1))
             .child(
-                Dialog::around(
-                    TextView::new("select a file on the left")
-                        .with_name("text")
-                        .scrollable()
-                        .full_height()
-                        .full_width(),
-                )
-                    .title("Commits"),
+                Dialog::around(author_path_counts_view.with_name("path-counts").full_width()) // TextView::new("foobar").with_name("co-authors")
+                    .title("Path counts"),
             )
             .full_screen(),
     );

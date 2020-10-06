@@ -1,24 +1,68 @@
 use core::fmt;
+use std::{fs, io};
 use std::cmp::Ordering;
 use std::ffi::OsStr;
+use std::fs::File;
+use std::io::Write;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::{fs, io};
+use std::thread::current;
 
+use cursive::{Cursive, Printer, View};
 use cursive::event::{Callback, Event, EventResult, Key};
-use cursive::{Cursive, View};
 use cursive_tree_view::{Placement, TreeView};
 use ignore::{Walk, WalkBuilder};
-use std::fs::File;
-use std::io::Write;
-
 use log::info;
+
+use crate::author_path_counts::AuthorPathCounts;
+use crate::repo::Repo;
+
+pub(crate) struct AuthorPathCountsView {
+    current_counts: Option<AuthorPathCounts>,
+    repo: Repo,
+    range: Option<String>
+}
+
+impl AuthorPathCountsView {
+    pub fn new(repo: Repo, range: Option<String>) -> AuthorPathCountsView {
+        AuthorPathCountsView {
+            current_counts: Some(AuthorPathCounts::default()),
+            repo,
+            range
+        }
+    }
+
+    pub(crate) fn update_counts(&mut self, absolute_path: &Path) {
+        let workdir = self.repo.workdir().unwrap();
+        let relative_path = absolute_path.strip_prefix(workdir).unwrap();
+        let option = self.range.as_ref();
+        let counts = self.repo.extract_author_path_counts(relative_path, option).unwrap();
+        self.current_counts = Some(counts);
+    }
+}
+
+impl View for AuthorPathCountsView {
+    fn draw(&self, printer: &Printer<'_, '_>) {
+        printer.print((0, 0), format!("{:?}", self.current_counts).as_str())
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct TreeEntry {
     pub(crate) name: String,
-    pub(crate) dir: Option<PathBuf>,
+    pub(crate) path: PathBuf,
+    pub(crate) is_dir: bool,
+}
+
+impl TreeEntry {
+    pub fn new(path: &Path) -> TreeEntry {
+        TreeEntry {
+            name: path.file_name().unwrap().to_str().unwrap().to_string(),
+            path: path.to_path_buf(),
+            is_dir: path.is_dir(),
+        }
+    }
 }
 
 impl fmt::Display for TreeEntry {
@@ -46,17 +90,7 @@ pub(crate) fn collect_entries(dir: &Path, entries: &mut Vec<TreeEntry>) -> eyre:
                 continue;
             }
 
-            if path.is_dir() {
-                entries.push(TreeEntry {
-                    name: entry.file_name().to_string_lossy().into_owned(),
-                    dir: Some(entry.into_path()),
-                });
-            } else if path.is_file() {
-                entries.push(TreeEntry {
-                    name: entry.file_name().to_string_lossy().into_owned(),
-                    dir: None,
-                });
-            }
+            entries.push(TreeEntry::new(entry.into_path().as_ref()));
         }
     }
     Ok(())
@@ -66,8 +100,9 @@ pub(crate) fn expand_tree(tree: &mut TreeView<TreeEntry>, parent_row: usize, dir
     let mut entries = Vec::new();
     collect_entries(dir, &mut entries).ok();
 
+
     for i in entries {
-        if i.dir.is_some() {
+        if i.is_dir {
             tree.insert_container_item(i, Placement::LastChild, parent_row);
         } else {
             tree.insert_item(i, Placement::LastChild, parent_row);
