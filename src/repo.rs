@@ -9,7 +9,7 @@ use itertools::Itertools;
 use once_cell::sync::Lazy;
 
 use crate::{AuthorCounts, Result, StringCache};
-use crate::author_path_counts::AuthorPathCounts;
+use crate::author_modifications::AuthorModifications;
 
 pub const HAN_SOLO: &str = "Han Solo";
 
@@ -74,7 +74,7 @@ impl Repo {
         Ok(author_counts)
     }
 
-    pub(crate) fn extract_author_path_counts(&mut self, path_spec: &Path, range: Option<&String>) -> Result<AuthorPathCounts> {
+    pub(crate) fn extract_author_modifications(&mut self, path_spec: &Path, range: Option<&String>) -> Result<AuthorModifications> {
         let repository = &self.repository;
         let replacements = &self.replacements;
         let string_cache = &mut self.string_cache;
@@ -93,7 +93,7 @@ impl Repo {
                 .map_err(|err| eyre!("Git error: {}", err.message()))?,
         };
 
-        let author_path_counts = revwalk
+        let author_modifications = revwalk
             .filter_map(|oid| repository.find_commit(oid.ok()?).ok())
             // Filter merge commits
             // TODO: This should be an argument option
@@ -114,13 +114,13 @@ impl Repo {
                 })
                 .collect::<Vec<_>>()
             )
-            .fold(AuthorPathCounts::default(), |mut counts, (author, additions, deletions)| {
+            .fold(AuthorModifications::default(), |mut counts, (author, additions, deletions)| {
                 counts.add_additions(author, additions as u32);
                 counts.add_deletions(author, deletions as u32);
                 counts
             });
 
-        Ok(author_path_counts)
+        Ok(author_modifications)
     }
 
     fn diff<'a>(

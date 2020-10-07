@@ -6,9 +6,9 @@ use fxhash::FxHashMap;
 use crate::stringcache::StringCache;
 
 #[derive(Debug, Default, Clone)]
-pub struct AuthorPathCounts(FxHashMap<usize, Modifications>);
+pub struct AuthorModifications(FxHashMap<usize, Modifications>);
 
-impl AuthorPathCounts {
+impl AuthorModifications {
     pub(crate) fn add_additions(&mut self, author: usize, additions: u32) {
         self.author(author).add_additions(additions);
     }
@@ -32,7 +32,7 @@ impl AuthorPathCounts {
     }
 }
 
-impl Index<usize> for AuthorPathCounts {
+impl Index<usize> for AuthorModifications {
     type Output = Modifications;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -40,7 +40,7 @@ impl Index<usize> for AuthorPathCounts {
     }
 }
 
-impl IntoIterator for AuthorPathCounts {
+impl IntoIterator for AuthorModifications {
     type Item = (usize, Modifications);
 
     type IntoIter = <HashMap<usize, Modifications> as IntoIterator>::IntoIter;
@@ -89,20 +89,20 @@ mod tests {
 
     #[test]
     fn add_additions() {
-        let mut author_path_counts: AuthorPathCounts = Default::default();
-        author_path_counts.add_additions(0, 42);
-        author_path_counts.add_additions(1, 84);
-        assert_eq!(author_path_counts[0].additions, 42);
-        assert_eq!(author_path_counts[1].additions, 84);
+        let mut author_modifications: AuthorModifications = Default::default();
+        author_modifications.add_additions(0, 42);
+        author_modifications.add_additions(1, 84);
+        assert_eq!(author_modifications[0].additions, 42);
+        assert_eq!(author_modifications[1].additions, 84);
     }
 
     #[test]
     fn add_deletions() {
-        let mut author_path_counts: AuthorPathCounts = Default::default();
-        author_path_counts.add_deletions(0, 42);
-        author_path_counts.add_deletions(1, 84);
-        assert_eq!(author_path_counts[0].deletions, 42);
-        assert_eq!(author_path_counts[1].deletions, 84);
+        let mut author_modifications: AuthorModifications = Default::default();
+        author_modifications.add_deletions(0, 42);
+        author_modifications.add_deletions(1, 84);
+        assert_eq!(author_modifications[0].deletions, 42);
+        assert_eq!(author_modifications[1].deletions, 84);
     }
 
     #[test]
@@ -111,13 +111,13 @@ mod tests {
         let alice_idx = string_cache.intern("Alice");
         let bob_idx = string_cache.intern("Bob");
 
-        let mut author_path_counts: AuthorPathCounts = Default::default();
-        author_path_counts.add_additions(alice_idx, 42);
-        author_path_counts.add_deletions(alice_idx, 23);
-        author_path_counts.add_additions(bob_idx, 84);
-        author_path_counts.add_additions(bob_idx, 32);
+        let mut author_modifications: AuthorModifications = Default::default();
+        author_modifications.add_additions(alice_idx, 42);
+        author_modifications.add_deletions(alice_idx, 23);
+        author_modifications.add_additions(bob_idx, 84);
+        author_modifications.add_additions(bob_idx, 32);
 
-        for (author, modifications) in author_path_counts.into_resolving_iter(&string_cache) {
+        for (author, modifications) in author_modifications.into_resolving_iter(&string_cache) {
             if author == "Alice" {
                 assert_eq!(modifications.additions, 42);
                 assert_eq!(modifications.deletions, 23);

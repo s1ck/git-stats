@@ -13,14 +13,14 @@ use simplelog::{CombinedLogger, Config, WriteLogger};
 
 use crate::{
     author_counts::{AuthorCounts, PairingCounts},
-    repo::{Repo, HAN_SOLO},
+    repo::{HAN_SOLO, Repo},
     stringcache::StringCache,
 };
 
 mod author_counts;
 mod repo;
 mod stringcache;
-mod author_path_counts;
+mod author_modifications;
 mod ui;
 
 #[derive(Clap, Debug)]
@@ -65,9 +65,7 @@ fn main() -> Result<()> {
     } = opts;
 
     let mut repo = Repo::open(repository.as_ref(), replacements)?;
-    // ui::render_coauthors(repo, range)
-    ui::render_path_counts(repo, range);
-    // let author_path_counts = repo.extract_author_path_counts("src/ui", None);
-    // eprintln!("author_path_counts = {:#?}", author_path_counts);
+    // ui::render_coauthors(repo, range);
+    ui::render_modifications(repo, range);
     Ok(())
 }

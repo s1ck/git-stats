@@ -15,22 +15,22 @@ use cursive_tree_view::{Placement, TreeView};
 use author_counts_view::AuthorCountsView;
 
 use crate::{PairingCounts, Repo, Result};
-use crate::author_path_counts::AuthorPathCounts;
-use crate::ui::author_path_counts_view::{AuthorPathCountsView, CustomTreeView, expand_tree, TreeEntry};
+use crate::author_modifications::AuthorModifications;
+use crate::ui::author_modifications_view::{AuthorModificationsView, CustomTreeView, expand_tree, TreeEntry};
 
 mod author_counts_view;
-mod author_path_counts_view;
+mod author_modifications_view;
 
-pub(crate) fn render_path_counts(repo: Repo, range: Option<String>) -> Result<()> {
+pub(crate) fn render_modifications(repo: Repo, range: Option<String>) -> Result<()> {
     let path = repo.workdir().unwrap();
 
-    let author_path_counts_view = AuthorPathCountsView::new(repo, range);
+    let author_modifications_view = AuthorModificationsView::new(repo, range);
 
     fn submit_handler(c: &mut Cursive, index: usize) {
         let tree = c.find_name::<CustomTreeView>("tree").unwrap();
 
         if let Some(entry) = tree.borrow_item(index) {
-            c.call_on_name("path-counts", |view: &mut AuthorPathCountsView| {
+            c.call_on_name("modifications", |view: &mut AuthorModificationsView| {
                 view.update_counts(entry.path.as_ref());
             })
                 .unwrap();
@@ -75,12 +75,12 @@ pub(crate) fn render_path_counts(repo: Repo, range: Option<String>) -> Result<()
                         .full_height()
                         .min_width(21), // .fixed_width(usize::from(app.author_widget_width()))
                 )
-                    .title("File View"),
+                    .title("File explorer"),
             )
             .child(DummyView.fixed_width(1))
             .child(
-                Dialog::around(author_path_counts_view.with_name("path-counts").full_width()) // TextView::new("foobar").with_name("co-authors")
-                    .title("Path counts"),
+                Dialog::around(author_modifications_view.with_name("modifications").full_width())
+                    .title("Modifications"),
             )
             .full_screen(),
     );

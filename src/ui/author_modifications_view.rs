@@ -15,19 +15,19 @@ use cursive_tree_view::{Placement, TreeView};
 use ignore::{Walk, WalkBuilder};
 use log::info;
 
-use crate::author_path_counts::AuthorPathCounts;
+use crate::author_modifications::AuthorModifications;
 use crate::repo::Repo;
 
-pub(crate) struct AuthorPathCountsView {
-    current_counts: Option<AuthorPathCounts>,
+pub(crate) struct AuthorModificationsView {
+    current_counts: Option<AuthorModifications>,
     repo: Repo,
     range: Option<String>
 }
 
-impl AuthorPathCountsView {
-    pub fn new(repo: Repo, range: Option<String>) -> AuthorPathCountsView {
-        AuthorPathCountsView {
-            current_counts: Some(AuthorPathCounts::default()),
+impl AuthorModificationsView {
+    pub fn new(repo: Repo, range: Option<String>) -> AuthorModificationsView {
+        AuthorModificationsView {
+            current_counts: Some(AuthorModifications::default()),
             repo,
             range
         }
@@ -37,12 +37,12 @@ impl AuthorPathCountsView {
         let workdir = self.repo.workdir().unwrap();
         let relative_path = absolute_path.strip_prefix(workdir).unwrap();
         let option = self.range.as_ref();
-        let counts = self.repo.extract_author_path_counts(relative_path, option).unwrap();
+        let counts = self.repo.extract_author_modifications(relative_path, option).unwrap();
         self.current_counts = Some(counts);
     }
 }
 
-impl View for AuthorPathCountsView {
+impl View for AuthorModificationsView {
     fn draw(&self, printer: &Printer<'_, '_>) {
         printer.print((0, 0), format!("{:?}", self.current_counts).as_str())
     }
