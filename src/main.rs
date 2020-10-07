@@ -1,21 +1,26 @@
 #[macro_use]
-extern crate maplit;
-#[macro_use]
 extern crate eyre;
+#[macro_use]
+extern crate maplit;
 
+use std::fs::File;
 use std::path::PathBuf;
+
+use clap::{AppSettings, Clap};
+use eyre::Result;
+use log::LevelFilter;
+use simplelog::{CombinedLogger, Config, WriteLogger};
 
 use crate::{
     author_counts::{AuthorCounts, PairingCounts},
-    repo::{Repo, HAN_SOLO},
+    repo::{HAN_SOLO, Repo},
     stringcache::StringCache,
 };
-use clap::{AppSettings, Clap};
-use eyre::Result;
 
 mod author_counts;
 mod repo;
 mod stringcache;
+mod author_modifications;
 mod ui;
 
 #[derive(Clap, Debug)]
@@ -47,12 +52,20 @@ fn main() -> Result<()> {
     color_eyre::install()?;
     let opts: Opts = Opts::parse();
 
+    WriteLogger::init(
+        LevelFilter::Info,
+        Config::default(),
+        File::create("git-stats.log")?,
+    )?;
+
     let Opts {
         repository,
         replacements,
         range,
     } = opts;
 
-    let repo = Repo::open(repository, replacements)?;
-    ui::render_coauthors(repo, range)
+    let mut repo = Repo::open(repository.as_ref(), replacements)?;
+    // ui::render_coauthors(repo, range);
+    ui::render_modifications(repo, range);
+    Ok(())
 }

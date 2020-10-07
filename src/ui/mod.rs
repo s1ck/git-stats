@@ -1,16 +1,94 @@
-use crate::{PairingCounts, Repo, Result};
-use author_counts_view::AuthorCountsView;
+use std::{ops::Deref, rc::Rc};
+use std::env;
+use std::path::{Path, PathBuf};
+
 use cursive::{
     align::{HAlign, VAlign},
+    Cursive,
+    CursiveExt,
     event::Key,
     menu::MenuTree,
-    traits::{Nameable, Resizable, Scrollable},
-    views::{Dialog, DummyView, EditView, LinearLayout, SelectView, TextView},
-    Cursive,
+    traits::{Nameable, Resizable, Scrollable}, View, views::{Dialog, DummyView, EditView, LinearLayout, SelectView, TextView},
 };
-use std::rc::Rc;
+use cursive_tree_view::{Placement, TreeView};
+
+use author_counts_view::AuthorCountsView;
+
+use crate::{PairingCounts, Repo, Result};
+use crate::author_modifications::AuthorModifications;
+use crate::ui::author_modifications_view::{AuthorModificationsView, CustomTreeView, expand_tree, TreeEntry};
 
 mod author_counts_view;
+mod author_modifications_view;
+
+pub(crate) fn render_modifications(repo: Repo, range: Option<String>) -> Result<()> {
+    let path = repo.workdir().unwrap();
+
+    let author_modifications_view = AuthorModificationsView::new(repo, range);
+
+    fn submit_handler(c: &mut Cursive, index: usize) {
+        let tree = c.find_name::<CustomTreeView>("tree").unwrap();
+
+        if let Some(entry) = tree.borrow_item(index) {
+            c.call_on_name("modifications", |view: &mut AuthorModificationsView| {
+                view.update_counts(entry.path.as_ref());
+            })
+                .unwrap();
+        }
+    }
+
+    let mut tree = TreeView::<TreeEntry>::new().on_submit(submit_handler);
+    let mut tree = CustomTreeView(tree, Rc::new(submit_handler));
+
+    tree.insert_item(
+        TreeEntry::new(&path),
+        Placement::After,
+        0,
+    );
+
+    expand_tree(&mut tree, 0, &path);
+
+    // Lazily insert directory listings for sub nodes
+    tree.set_on_collapse(|siv: &mut Cursive, row, is_collapsed, children| {
+        if !is_collapsed && children == 0 {
+            siv.call_on_name("tree", move |tree: &mut CustomTreeView| {
+                let dir = tree.borrow_item(row).unwrap();
+                let dir = dir.path.to_owned();
+                expand_tree(tree, row, &dir);
+            });
+        }
+    });
+
+    // Setup Cursive
+    let mut siv = Cursive::default();
+
+    add_global_callbacks(&mut siv);
+
+    // Let's add a ResizedView to keep the list at a reasonable size
+    // (it can scroll anyway).
+    siv.add_fullscreen_layer(
+        LinearLayout::horizontal()
+            .child(
+                Dialog::around(
+                    tree.with_name("tree")
+                        .scrollable()
+                        .full_height()
+                        .min_width(21), // .fixed_width(usize::from(app.author_widget_width()))
+                )
+                    .title("File explorer"),
+            )
+            .child(DummyView.fixed_width(1))
+            .child(
+                Dialog::around(author_modifications_view.with_name("modifications").full_width())
+                    .title("Modifications"),
+            )
+            .full_screen(),
+    );
+
+    siv.run();
+
+    Ok(())
+}
 
 pub(crate) fn render_coauthors(repo: Repo, range: Option<String>) -> Result<()> {
     let mut counts_view = AuthorCountsView::new(repo);

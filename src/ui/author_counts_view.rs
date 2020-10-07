@@ -28,7 +28,7 @@ impl AuthorCountsView {
     }
 
     pub(crate) fn counts_for_range(&mut self, range: Option<String>) -> Result<AuthorCounts> {
-        self.repo.extract_coauthors(range)
+        self.repo.extract_author_counts(range)
     }
 
     fn current_counts(&self) -> Option<&PairingCounts> {

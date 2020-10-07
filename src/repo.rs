@@ -1,11 +1,15 @@
 use std::{borrow::Cow, collections::HashMap, path::PathBuf};
+use std::iter::once;
+use std::path::Path;
 
 use color_eyre::Section;
-use git2::{Commit, Repository};
+use cursive::With;
+use git2::{Commit, Delta, Diff, DiffDelta, DiffFormat, DiffOptions, Patch, Pathspec, Repository};
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 
 use crate::{AuthorCounts, Result, StringCache};
+use crate::author_modifications::AuthorModifications;
 
 pub const HAN_SOLO: &str = "Han Solo";
 
@@ -16,7 +20,10 @@ pub struct Repo {
 }
 
 impl Repo {
-    pub(crate) fn open(path: Option<PathBuf>, replacements: Vec<(String, String)>) -> Result<Self> {
+    pub(crate) fn open(
+        path: Option<&PathBuf>,
+        replacements: Vec<(String, String)>,
+    ) -> Result<Self> {
         let repository = path
             .map_or_else(Repository::open_from_env, Repository::discover)
             .map_err(|_| Error::NotInGitRepository)
@@ -32,11 +39,15 @@ impl Repo {
         })
     }
 
+    pub(crate) fn workdir(&self) -> Option<PathBuf> {
+        self.repository.workdir().map(|p| p.to_path_buf())
+    }
+
     pub(crate) fn string_cache(&self) -> &StringCache {
         &self.string_cache
     }
 
-    pub(crate) fn extract_coauthors(&mut self, range: Option<String>) -> Result<AuthorCounts> {
+    pub(crate) fn extract_author_counts(&mut self, range: Option<String>) -> Result<AuthorCounts> {
         let repository = &self.repository;
         let replacements = &self.replacements;
         let string_cache = &mut self.string_cache;
@@ -61,6 +72,67 @@ impl Repo {
             });
 
         Ok(author_counts)
+    }
+
+    pub(crate) fn extract_author_modifications(&mut self, path_spec: &Path, range: Option<&String>) -> Result<AuthorModifications> {
+        let repository = &self.repository;
+        let replacements = &self.replacements;
+        let string_cache = &mut self.string_cache;
+
+        let mut revwalk = repository.revwalk()?;
+
+        let mut diff_options = DiffOptions::new();
+        diff_options.pathspec(path_spec);
+
+        match range {
+            Some(range) => revwalk
+                .push_range(range.as_str())
+                .map_err(|err| eyre!("Invalid range: `{}`. Git error: {}", range, err.message()))?,
+            None => revwalk
+                .push_head()
+                .map_err(|err| eyre!("Git error: {}", err.message()))?,
+        };
+
+        let author_modifications = revwalk
+            .filter_map(|oid| repository.find_commit(oid.ok()?).ok())
+            // Filter merge commits
+            // TODO: This should be an argument option
+            .filter(|commit| commit.parent_count() == 1)
+            .flat_map(|commit| commit.parents()
+                .filter_map(|parent| {
+                    let author_name = commit.author();
+                    let author_name = author_name.name()?;
+                    let author_name = Self::author_id(replacements, string_cache, author_name);
+                    let diff = Self::diff(&repository, &commit, &parent, &mut diff_options).ok()?;
+
+                    if diff.deltas().len() == 0 {
+                        return None;
+                    }
+
+                    let stats = diff.stats().unwrap();
+                    Some((author_name, stats.insertions(), stats.deletions()))
+                })
+                .collect::<Vec<_>>()
+            )
+            .fold(AuthorModifications::default(), |mut counts, (author, additions, deletions)| {
+                counts.add_additions(author, additions as u32);
+                counts.add_deletions(author, deletions as u32);
+                counts
+            });
+
+        Ok(author_modifications)
+    }
+
+    fn diff<'a>(
+        repo: &'a Repository,
+        commit: &Commit,
+        parent: &Commit,
+        opts: &mut DiffOptions,
+    ) -> eyre::Result<Diff<'a>> {
+        let a = parent.tree()?;
+        let b = commit.tree()?;
+        let diff = repo.diff_tree_to_tree(Some(&a), Some(&b), Some(opts))?;
+        Ok(diff)
     }
 
     fn find_and_add_navigators(
