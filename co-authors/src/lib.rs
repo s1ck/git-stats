@@ -1,5 +1,6 @@
 use nom::{
-    bytes::complete::{is_a, is_not, tag, tag_no_case, take_until},
+    bytes::complete::{is_not, tag, tag_no_case, take_until},
+    character::complete::space0,
     combinator::{map, opt},
     multi::many1,
     sequence::{delimited, preceded},
@@ -13,49 +14,29 @@ pub struct CoAuthor<'a> {
 }
 
 pub fn get_co_author(line: &str) -> Option<CoAuthor> {
-    let (_, (name, mail)) = co_author(line.as_bytes()).ok()?;
-    let name = std::str::from_utf8(name).ok()?;
-    let mail = mail.and_then(|mail| std::str::from_utf8(mail).ok());
+    let (_, (name, mail)) = co_author(line).ok()?;
     Some(CoAuthor { name, mail })
 }
 
-fn co_author(input: &[u8]) -> IResult<&[u8], (&[u8], Option<&[u8]>)> {
+fn co_author(input: &str) -> IResult<&str, (&str, Option<&str>)> {
     let (input, name) = co_author_name(input)?;
     let (input, email) = co_author_mail(input)?;
     Ok((input, (name, email)))
 }
 
-fn co_author_name(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    const LEADING_ANGLE: &[u8] = b"<";
-    let co_author_name = map(take_until(LEADING_ANGLE), trim_ascii_end);
+fn co_author_name(input: &str) -> IResult<&str, &str> {
+    let co_author_name = map(take_until("<"), str::trim);
     preceded(co_authored_by, co_author_name)(input)
 }
 
-// unstable feature 'byte_slice_trim_ascii'
-// see issue #94035 <https://github.com/rust-lang/rust/issues/94035>
-// taken from https://github.com/rust-lang/rust/blob/a55dd71d5fb0ec5a6a3a9e8c27b2127ba491ce52/library/core/src/slice/ascii.rs#L125-L138
-fn trim_ascii_end(input: &[u8]) -> &[u8] {
-    let mut bytes = input;
-    while let [rest @ .., last] = bytes {
-        if last.is_ascii_whitespace() {
-            bytes = rest;
-        } else {
-            break;
-        }
-    }
-    bytes
-}
-
-fn co_authored_by(input: &[u8]) -> IResult<&[u8], Vec<()>> {
-    let co_authored_by = delimited(
-        opt(is_a(" \t")),
-        map(tag_no_case("co-authored-by:"), |_| ()),
-        opt(is_a(" \t")),
-    );
+fn co_authored_by(input: &str) -> IResult<&str, Vec<()>> {
+    let co_authored_by = tag_no_case("co-authored-by:");
+    let co_authored_by = map(co_authored_by, |_| ());
+    let co_authored_by = delimited(space0, co_authored_by, space0);
     many1(co_authored_by)(input)
 }
 
-fn co_author_mail(input: &[u8]) -> IResult<&[u8], Option<&[u8]>> {
+fn co_author_mail(input: &str) -> IResult<&str, Option<&str>> {
     opt(delimited(tag("<"), is_not("> \t"), tag(">")))(input)
 }
 
@@ -71,23 +52,23 @@ mod tests {
     #[test_case("Co-authored-by: Alice <alice@wonderland.org>", "Alice <alice@wonderland.org>"; "mixed case")]
     #[test_case("Co-authored-by: Co-authored-by: Alice <alice@wonderland.org>", "Alice <alice@wonderland.org>"; "florentin case")]
     fn test_co_authored_by(input: &str, expected: &str) {
-        let (result, _) = co_authored_by(input.as_bytes()).unwrap();
-        assert_eq!(result, expected.as_bytes())
+        let (result, _) = co_authored_by(input).unwrap();
+        assert_eq!(result, expected)
     }
 
     #[test_case("co-authored-by: Alice <alice@wonderland.org>", "Alice"; "alice")]
     #[test_case("co-authored-by: Alice Bob <alice@wonderland.org>", "Alice Bob"; "alice bob")]
     fn test_co_author_name(input: &str, expected: &str) {
-        let (_, result) = co_author_name(input.as_bytes()).unwrap();
-        assert_eq!(result, expected.as_bytes())
+        let (_, result) = co_author_name(input).unwrap();
+        assert_eq!(result, expected)
     }
 
     #[test_case("<alice@wonderland.org>", "alice@wonderland.org"; "alice")]
     #[test_case("<alice@wonderland.org> bob", "alice@wonderland.org"; "alice bob")]
     #[test_case("<alice@wonderland.org> <charlie@wonderland.org>", "alice@wonderland.org"; "alice charlie")]
     fn test_co_author_mail(input: &str, expected: &str) {
-        let (_, result) = co_author_mail(input.as_bytes()).unwrap();
-        assert_eq!(result.unwrap(), expected.as_bytes())
+        let (_, result) = co_author_mail(input).unwrap();
+        assert_eq!(result.unwrap(), expected)
     }
 
     #[test_case(""; "empty")]
@@ -97,7 +78,7 @@ mod tests {
     #[test_case("alice@wonderland.org>"; "missing open")]
     #[test_case("<alice and bob@wonderland.org>"; "contains whitespace")]
     fn test_missing_co_author_mail(input: &str) {
-        let (_, result) = co_author_mail(input.as_bytes()).unwrap();
+        let (_, result) = co_author_mail(input).unwrap();
         assert_eq!(result, None)
     }
 
