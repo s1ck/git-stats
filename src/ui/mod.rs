@@ -3,7 +3,7 @@ use author_counts_view::AuthorCountsView;
 use cursive::{
     align::{HAlign, VAlign},
     event::Key,
-    menu::MenuTree,
+    menu::Tree as MenuTree,
     traits::{Nameable, Resizable, Scrollable},
     views::{Dialog, DummyView, EditView, LinearLayout, SelectView, TextView},
     Cursive,
@@ -27,7 +27,7 @@ pub(crate) fn render_coauthors(repo: Repo, range: Option<String>) -> Result<()> 
     // add all authors
     let counts = counts_view.counts_for_range(range)?;
     let counts = counts
-        .into_resolving_iter(&counts_view.string_cache())
+        .into_resolving_iter(counts_view.string_cache())
         .map(|(author, counts)| (author, Rc::new(counts)));
     select.add_all(counts);
 
@@ -105,7 +105,7 @@ fn show_range_dialog(siv: &mut Cursive) {
                     "committers",
                     move |select: &mut SelectView<Rc<PairingCounts>>| {
                         let counts = counts
-                            .into_resolving_iter(&app.string_cache())
+                            .into_resolving_iter(app.string_cache())
                             .map(|(author, counts)| (author, Rc::new(counts)));
 
                         select.clear();
