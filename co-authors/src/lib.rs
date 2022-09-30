@@ -35,7 +35,7 @@ impl<'a> TryFrom<&'a str> for CoAuthor<'a> {
     fn try_from(line: &'a str) -> Result<Self, Self::Error> {
         match co_author(line) {
             Ok((_, (name, mail))) => Ok(CoAuthor { name, mail }),
-            Err(e) => match dbg!(e) {
+            Err(e) => match e {
                 Err::Incomplete(_) => Err(CoAuthorError::MissingTrailerKey),
                 Err::Error(e) | Err::Failure(e) => match e.code {
                     ErrorKind::Tag => Err(CoAuthorError::MissingTrailerKey),
