@@ -1,12 +1,12 @@
 [workspace]
-members = [ "co-authors" ]
+members = ["co-authors"]
 
 [package]
 name = "git-stats"
 version = "0.0.1"
 authors = [
     "Martin Junghanns <martin.junghanns@neotechnology.com>",
-    "Paul Horn <paul.horn@neotechnology.com>"
+    "Paul Horn <paul.horn@neotechnology.com>",
 ]
 description = "Print some statistics about your repo"
 edition = "2018"
@@ -15,20 +15,20 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = "3.0.0-beta.1"
+clap = { version = "3.2.2", features = ["derive"] }
 co-authors = { path = "./co-authors" }
-color-eyre = { version = "0.5.1", default-features = false }
-cursive = "0.15.0"
-eyre = "0.6.0"
+color-eyre = { version = "0.6.2", default-features = false }
+cursive = "0.20.0"
+eyre = "0.6.8"
 fxhash = "0.2.1"
-git2 = { version = "0.13.10", default-features = false }
-indexmap = "1.5.1"
-itertools = "0.9.0"
+git2 = { version = "0.15.0", default-features = false }
+indexmap = "1.9.1"
+itertools = "0.10.5"
 maplit = "1.0.2"
-once_cell = "1.4.1"
-str-utils = "0.1.3"
-thiserror = "1.0.20"
-unicode-width = "0.1.8"
+once_cell = "1.15.0"
+str-utils = "0.1.6"
+thiserror = "1.0.37"
+unicode-width = "0.1.10"
 
 [profile.release]
 codegen-units = 1
@@ -39,5 +39,3 @@ opt-level = 2
 overflow-checks = true
 panic = 'abort'
 rpath = false
-
-

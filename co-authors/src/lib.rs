@@ -1,35 +1,51 @@
-#![allow(deprecated)]
+use nom::{
+    bytes::complete::{is_a, tag_no_case, take_until},
+    combinator::{map, opt},
+    multi::many1,
+    sequence::{delimited, preceded},
+    IResult,
+};
 
-#[macro_use]
-extern crate nom;
-
-#[derive(Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct CoAuthor<'a> {
     pub name: &'a str,
 }
 
 pub fn get_co_author(line: &str) -> Option<CoAuthor> {
-    let (_, co_author) = co_author(line.as_bytes()).ok()?;
-    let co_author = std::str::from_utf8(co_author).ok()?;
-    Some(CoAuthor { name: co_author })
+    let (_, name) = co_author(line.as_bytes()).ok()?;
+    let name = std::str::from_utf8(name).ok()?;
+    Some(CoAuthor { name })
 }
 
-// sad Ferris :*(
-fn byte_string_trim(input: &[u8]) -> &[u8] {
-    &input[0..input.len() - (input.iter().rev().take_while(|c| **c == b' ').count())]
+fn co_author(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    const LEADING_ANGLE: &[u8] = b"<";
+    let co_author_name = map(take_until(LEADING_ANGLE), trim_ascii_end);
+    preceded(co_authored_by, co_author_name)(input)
 }
 
-named!(
-    co_authored_by<Vec<&[u8]>>,
-    many1!(ws!(tag_no_case!("co-authored-by:")))
-);
-named!(
-    co_author<&[u8]>,
-    preceded!(
-        co_authored_by,
-        map!(take_till!(|c| c == b'<'), byte_string_trim)
-    )
-);
+// unstable feature 'byte_slice_trim_ascii'
+// see issue #94035 <https://github.com/rust-lang/rust/issues/94035>
+// taken from https://github.com/rust-lang/rust/blob/a55dd71d5fb0ec5a6a3a9e8c27b2127ba491ce52/library/core/src/slice/ascii.rs#L125-L138
+fn trim_ascii_end(input: &[u8]) -> &[u8] {
+    let mut bytes = input;
+    while let [rest @ .., last] = bytes {
+        if last.is_ascii_whitespace() {
+            bytes = rest;
+        } else {
+            break;
+        }
+    }
+    bytes
+}
+
+fn co_authored_by(input: &[u8]) -> IResult<&[u8], Vec<()>> {
+    let co_authored_by = delimited(
+        opt(is_a(" \t")),
+        map(tag_no_case("co-authored-by:"), |_| ()),
+        opt(is_a(" \t")),
+    );
+    many1(co_authored_by)(input)
+}
 
 #[cfg(test)]
 mod tests {

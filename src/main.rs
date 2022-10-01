@@ -10,7 +10,7 @@ use crate::{
     repo::{Repo, HAN_SOLO},
     stringcache::StringCache,
 };
-use clap::{AppSettings, Clap};
+use clap::{AppSettings, Parser};
 use eyre::Result;
 
 mod author_counts;
@@ -18,14 +18,14 @@ mod repo;
 mod stringcache;
 mod ui;
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 #[clap(version, author, about, global_setting = AppSettings::ColoredHelp)]
 struct Opts {
     /// Path to Git repository
     #[clap(short, long)]
     repository: Option<PathBuf>,
     /// Replace authors based on this map. Can be specified multiple times, value are delimited by `=`
-    #[clap(short = "R", long="replacement", parse(try_from_str = parse_key_val), number_of_values = 1)]
+    #[clap(short = 'R', long="replacement", parse(try_from_str = parse_key_val), number_of_values = 1)]
     replacements: Vec<(String, String)>,
     /// Commit range to scan. Default is to go from HEAD to the very beginning.
     ///

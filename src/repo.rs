@@ -97,7 +97,7 @@ impl Repo {
     fn get_navigators(commit_message: &str) -> impl Iterator<Item = &str> {
         commit_message
             .lines()
-            .filter_map(|line| co_authors::get_co_author(line))
+            .filter_map(co_authors::get_co_author)
             .map(|coauthor| coauthor.name)
             .pad_using(1, |_| HAN_SOLO)
     }
