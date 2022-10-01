@@ -1,5 +1,6 @@
-use std::{borrow::Cow, collections::HashMap, path::PathBuf};
+use std::{borrow::Cow, collections::HashMap, convert::TryFrom, path::PathBuf};
 
+use co_authors::CoAuthor;
 use color_eyre::Section;
 use git2::{Commit, Repository};
 use itertools::Itertools;
@@ -97,7 +98,7 @@ impl Repo {
     fn get_navigators(commit_message: &str) -> impl Iterator<Item = &str> {
         commit_message
             .lines()
-            .filter_map(co_authors::get_co_author)
+            .filter_map(|line| CoAuthor::try_from(line).ok())
             .map(|coauthor| coauthor.name)
             .pad_using(1, |_| HAN_SOLO)
     }
